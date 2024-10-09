@@ -1,1 +1,4 @@
 *.DS_Store
+
+# Removing the python generated files
+__pycache__/

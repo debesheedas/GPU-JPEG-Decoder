@@ -22,16 +22,10 @@ class HuffmanTable:
         self.root=[]
         self.elements = []
         self.header, self.lengths, self.elements = self.extract_table(data)
-        print("**********")
-        print(self.elements)
         self.GetHuffmanBits(self.lengths, self.elements)
-        print(self.elements)
-        print("___________")
-        print(self.root)
 
     def extract_table(self, data):
         offset = 0
-        data = data[4:]
         header, = unpack("B",data[offset:offset+1])
         offset += 1
 
