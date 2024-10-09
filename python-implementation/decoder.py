@@ -1,17 +1,5 @@
 from struct import unpack
 from huffman_table import HuffmanTable
-
-marker_mapping = {
-    0xffd8: "Start Marker",
-    0xffe0: "Application Default Header",
-    0xffdb: "Quantization Table",
-    0xffc0: "Start of Frame",
-    0xffc4: "Define Huffman Table",
-    0xffda: "Start of Scan",
-    0xffd9: "End of Image"
-}
-
-
 class JPEG:
     def __init__(self, image_file):
         f = open(image_file, "rb")
@@ -88,7 +76,6 @@ class JPEG:
             if len(data) == 0:
                 break
         
-    
     def print_8x8_matrix(self, binary_data):
         # Unpack the binary data into 64 unsigned 8-bit integers (64 "B" format characters)
         unpacked_data = unpack("64B", binary_data)
