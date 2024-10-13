@@ -3,6 +3,29 @@ from huffman_table import HuffmanTable
 import math
 from huffman_table import Stream
 
+
+
+def decode_number(code, bits):
+    l = 2 ** (code - 1)
+    if bits >= l:
+        return bits
+    else:
+        return bits - (2 * l - 1)
+    
+def clamp(col):
+    col = 255 if col > 255 else col
+    col = 0 if col < 0 else col
+    return int(col)
+    
+def color_conversion(Y, Cr, Cb):
+    """
+    Converts Y, Cr and Cb to RGB color space
+    """
+    R = Cr * (2 - 2 * 0.299) + Y
+    B = Cb * (2 - 2 * 0.114) + Y
+    G = (Y - 0.114 * B - 0.299 * R) / 0.587
+    return (clamp(R + 128), clamp(G + 128), clamp(B + 128))
+    
 class IDCT: #done
 
     def __init__(self):
@@ -81,6 +104,35 @@ class JPEG:
                 datapro.append(data[i])
                 i+=1
         return datapro,i
+    
+
+    def build_matrix(self, st, idx, quant, olddccoeff):
+        i = IDCT()
+        code = self.huffman_tables[0 + idx].GetCode(st)
+        bits = st.GetBitN(code)
+        dccoeff = decode_number(code, bits) + olddccoeff
+
+        i.base[0] = (dccoeff) * quant[0]
+        l = 1
+        while l < 64:
+            code = self.huffman_tables[16 + idx].GetCode(st)
+            if code == 0:
+                break
+            if code > 15:
+                l += code >> 4
+                code = code & 0x0F
+
+            bits = st.GetBitN(code)
+
+            if l < 64:
+                coeff = decode_number(code, bits)
+                i.base[l] = coeff * quant[l]
+                l += 1
+
+        i.rearrange_using_zigzag()
+        i.perform_IDCT()
+
+        return i, dccoeff
     
     def start_of_scan(self, data, header_len):
         # Remove byte stuffing from the data after the header
