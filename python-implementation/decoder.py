@@ -1,5 +1,82 @@
 from struct import unpack
 from huffman_table import HuffmanTable
+import math
+from huffman_table import Stream
+
+
+
+def decode_number(code, bits):
+    l = 2 ** (code - 1)
+    if bits >= l:
+        return bits
+    else:
+        return bits - (2 * l - 1)
+    
+def clamp(col):
+    col = 255 if col > 255 else col
+    col = 0 if col < 0 else col
+    return int(col)
+    
+def color_conversion(Y, Cr, Cb):
+    """
+    Converts Y, Cr and Cb to RGB color space
+    """
+    R = Cr * (2 - 2 * 0.299) + Y
+    B = Cb * (2 - 2 * 0.114) + Y
+    G = (Y - 0.114 * B - 0.299 * R) / 0.587
+    return (clamp(R + 128), clamp(G + 128), clamp(B + 128))
+    
+class IDCT: #done
+
+    def __init__(self):
+        self.base = [0] * 64
+        self.zigzag = [
+            [0, 1, 5, 6, 14, 15, 27, 28],
+            [2, 4, 7, 13, 16, 26, 29, 42],
+            [3, 8, 12, 17, 25, 30, 41, 43],
+            [9, 11, 18, 24, 31, 40, 44, 53],
+            [10, 19, 23, 32, 39, 45, 52, 54],
+            [20, 22, 33, 38, 46, 51, 55, 60],
+            [21, 34, 37, 47, 50, 56, 59, 61],
+            [35, 36, 48, 49, 57, 58, 62, 63],
+        ]
+        self.idct_precision = 8
+        self.idct_table = [
+            [
+                (self.NormCoeff(u) * math.cos(((2.0 * x + 1.0) * u * math.pi) / 16.0))
+                for x in range(self.idct_precision)
+            ]
+            for u in range(self.idct_precision)
+        ]
+
+    def NormCoeff(self, n):
+        if n == 0:
+            return 1.0 / math.sqrt(2.0)
+        else:
+            return 1.0
+
+    def rearrange_using_zigzag(self):
+        for x in range(8):
+            for y in range(8):
+                self.zigzag[x][y] = self.base[self.zigzag[x][y]]
+        return self.zigzag
+
+    def perform_IDCT(self):
+        out = [list(range(8)) for i in range(8)]
+
+        for x in range(8):
+            for y in range(8):
+                local_sum = 0
+                for u in range(self.idct_precision):
+                    for v in range(self.idct_precision):
+                        local_sum += (
+                            self.zigzag[v][u]
+                            * self.idct_table[u][x]
+                            * self.idct_table[v][y]
+                        )
+                out[y][x] = local_sum // 4 # Adjust scale by dividing by 4.0
+        self.base = out # Update the base with the computed values
+
 from huffman_tree import HuffmanTree, HuffmanTreeNode
 class JPEG:
     def __init__(self, image_file):
@@ -29,14 +106,60 @@ class JPEG:
                 i+=1
         return datapro,i
     
+
+    def build_matrix(self, st, idx, quant, olddccoeff):
+        i = IDCT()
+        code = self.huffman_tables[0 + idx].GetCode(st)
+        bits = st.GetBitN(code)
+        dccoeff = decode_number(code, bits) + olddccoeff
+
+        i.base[0] = (dccoeff) * quant[0]
+        l = 1
+        while l < 64:
+            code = self.huffman_tables[16 + idx].GetCode(st)
+            if code == 0:
+                break
+            if code > 15:
+                l += code >> 4
+                code = code & 0x0F
+
+            bits = st.GetBitN(code)
+
+            if l < 64:
+                coeff = decode_number(code, bits)
+                i.base[l] = coeff * quant[l]
+                l += 1
+
+        i.rearrange_using_zigzag()
+        i.perform_IDCT()
+
+        return i, dccoeff
+    
     def start_of_scan(self, data, header_len):
-        data,lenchunk = self.remove_byte_stuffing(data[header_len:])
-        oldlumdccoeff, oldCbdccoeff, oldCrdccoeff = 0, 0, 0
-        for y in range(self.height//8):
-            for x in range(self.width//8):
-                # TODO: build matrix      
-                pass 
-        return lenchunk+header_len
+        # Remove byte stuffing from the data after the header
+        data, len_chunk = self.remove_byte_stuffing(data[header_len:])
+        
+        # Initialize a stream from the processed data
+        stream = Stream(data)
+
+        # Initialize previous DC coefficients for luminance and chrominance
+        prev_luminance_dc = 0
+        prev_chrominance_cb_dc = 0
+        prev_chrominance_cr_dc = 0
+
+        # Loop through each 8x8 block in the image
+        for block_y in range(self.height // 8):
+            for block_x in range(self.width // 8):
+                # Build matrices for luminance and chrominance components
+                matL, prev_luminance_dc = self.build_matrix(stream, 0, self.quant[self.quantMapping[0]], prev_luminance_dc)
+                matCr, prev_chrominance_cr_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[1]], prev_chrominance_cr_dc)
+                matCb, prev_chrominance_cb_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[2]], prev_chrominance_cb_dc)
+
+                # Draw the matrix for the current block
+                self.draw_matrix(block_x, block_y, matL.base, matCb.base, matCr.base)
+
+        # Return the total length of processed data including the header
+        return len_chunk + header_len
     
     def parse_sof(self, data):
         hdr, self.height, self.width, components = unpack(">BHHB",data[0:6])
