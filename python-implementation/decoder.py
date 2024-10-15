@@ -1,5 +1,6 @@
 from struct import unpack
 from huffman_table import HuffmanTable
+from huffman_tree import HuffmanTree, HuffmanTreeNode
 class JPEG:
     def __init__(self, image_file):
         f = open(image_file, "rb")
@@ -93,15 +94,20 @@ class JPEG:
         huffman_tables = []
         for i in range(4):
             huffman_tables.append(HuffmanTable(self.data_chunks['Huffman_Tables'][i]))
-        print(huffman_tables)  
+
+        root = HuffmanTreeNode(internal=True)
+        tree =  HuffmanTree(self.data_chunks['Huffman_Tables'][0], root)
+        for item in tree.elements:
+            tree.add_to_tree(root, item, item.length)
+        tree.decode_tree(tree.root, '')
+        for item,val in tree.codes.items():
+            print(item, ' ' , val)
 
         # Step 2: Extracting Quantization Values
         print(self.data_chunks['Quant_Tables'][0][1:]) # 0 for luminance
         print(len(self.data_chunks['Quant_Tables'][0][1:]))
         print(self.print_8x8_matrix(self.data_chunks['Quant_Tables'][0][1:]))
         print(self.data_chunks['Quant_Tables'][1][1:]) # 1 for others
-
-           
 
 if __name__ == "__main__":
     img = JPEG('profile.jpg')

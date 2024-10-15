@@ -36,7 +36,8 @@ class HuffmanTable:
         # Extract the elements after the initial 16 bytes
         elements = []
         for i in lengths:
-            elements += (unpack("B"*i, data[offset:offset+i]))
+            val = unpack("B"*i, data[offset:offset+i])
+            elements += (val)
             offset += i 
 
         print("Header: ",header)
@@ -59,7 +60,7 @@ class HuffmanTable:
                     return True
         return False
     
-    def GetHuffmanBits(self,  lengths, elements):
+    def GetHuffmanBits(self, lengths, elements):
         ii = 0
         for i in range(len(lengths)):
             for j in range(lengths[i]):
