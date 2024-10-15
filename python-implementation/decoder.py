@@ -3,7 +3,14 @@ from huffman_table import HuffmanTable
 import math
 from huffman_table import Stream
 
-
+def GetArray(type, l, length):
+    """
+    A convenience function for unpacking an array from bitstream
+    """
+    s = ""
+    for i in range(length):
+        s = s + type
+    return list(unpack(s, l[:length]))
 
 def decode_number(code, bits):
     l = 2 ** (code - 1)
@@ -83,11 +90,14 @@ class JPEG:
         f = open(image_file, "rb")
         self.img_data = f.read()
         self.quantMapping = []
+        self.quant = {}
         self.width = 0
         self.height = 0
+        self.huffman_tables = {}
 
         # Extracting the data parts of the JPEG image.
         self.data_chunks = self.extract_chunks()
+        self.decode()
 
     # 0xFF is a special character, if it is in the image it is followed by 0x00 for distinction. 
     # When decoding, we need to remove these 00's.
@@ -106,6 +116,25 @@ class JPEG:
                 i+=1
         return datapro,i
     
+
+    def decodeHuffman(self, data):
+        offset = 0
+        (header,) = unpack("B", data[offset : offset + 1])
+        print(header, header & 0x0F, (header >> 4) & 0x0F)
+        offset += 1
+
+        lengths = GetArray("B", data[offset : offset + 16], 16)
+        offset += 16
+
+        elements = []
+        for i in lengths:
+            elements += GetArray("B", data[offset : offset + i], i)
+            offset += i
+
+        hf = HuffmanTable(data)
+        hf.GetHuffmanBits(lengths, elements)
+        self.huffman_tables[header] = hf
+        data = data[offset:]
 
     def build_matrix(self, st, idx, quant, olddccoeff):
         i = IDCT()
@@ -152,11 +181,12 @@ class JPEG:
             for block_x in range(self.width // 8):
                 # Build matrices for luminance and chrominance components
                 matL, prev_luminance_dc = self.build_matrix(stream, 0, self.quant[self.quantMapping[0]], prev_luminance_dc)
-                matCr, prev_chrominance_cr_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[1]], prev_chrominance_cr_dc)
-                matCb, prev_chrominance_cb_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[2]], prev_chrominance_cb_dc)
+                # matCr, prev_chrominance_cr_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[1]], prev_chrominance_cr_dc)
+                # matCb, prev_chrominance_cb_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[2]], prev_chrominance_cb_dc)
 
-                # Draw the matrix for the current block
-                self.draw_matrix(block_x, block_y, matL.base, matCb.base, matCr.base)
+                # # Draw the matrix for the current block
+                # self.draw_matrix(block_x, block_y, matL.base, matCb.base, matCr.base)
+                pass
 
         # Return the total length of processed data including the header
         return len_chunk + header_len
@@ -186,9 +216,13 @@ class JPEG:
                     if 'Huffman_Tables' not in data_chunks:
                         data_chunks['Huffman_Tables'] = []
                     data_chunks['Huffman_Tables'].append(chunk)
+                    self.decodeHuffman(chunk)
                 elif marker == 0xFFDB:
                     if 'Quant_Tables' not in data_chunks:
                         data_chunks["Quant_Tables"] = []
+                    hdr, = unpack("B",chunk[0:1])
+                    print(hdr, ' is header')
+                    self.quant[hdr] = GetArray("B", chunk[1 : 1 + 64], 64)
                     data_chunks["Quant_Tables"].append(chunk)
                 elif marker == 0xFFC0:
                     data_chunks['Start_Of_Frame'] = chunk
@@ -214,10 +248,6 @@ class JPEG:
 
     def decode(self):
         # Step 1: Extracting Huffman Tables
-        huffman_tables = []
-        for i in range(4):
-            huffman_tables.append(HuffmanTable(self.data_chunks['Huffman_Tables'][i]))
-
         root = HuffmanTreeNode(internal=True)
         tree =  HuffmanTree(self.data_chunks['Huffman_Tables'][0], root)
         for item in tree.elements:
