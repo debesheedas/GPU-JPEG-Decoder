@@ -2,3 +2,4 @@
 
 # Removing the python generated files
 __pycache__/
+src/decoder
