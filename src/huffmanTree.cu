@@ -7,13 +7,9 @@ HuffmanTree::HuffmanTree(const std::vector<char>& bytes) {
     this->root = new HuffmanTreeNode(0,0,false);
 
     for(const auto& n: this->nodes) {
-        std::cout << n->val << " value " << std::endl;
         this->addToTree(this->root, n, n->length);
     }
     this->decodeTree(this->root, "");
-    for(const auto& [key,val]: this->codes) {
-    std::cout << int(key) << " is key " << val << std::endl;
-    }
 }
 
 // Creates the nodes for the characters.
@@ -30,10 +26,8 @@ void HuffmanTree::createNodes() {
 
     for (int i = 0; i < 16; i++) {
         char curLength = lengths[i];
-        std::cout << (int)(curLength) << " *** " << std::endl;
         for (int j = 0; j < curLength; j++) {
             char curVal = this->bytes[offset++];
-            std::cout << " cur val " << std::hex << (int)(unsigned char)(curVal) << " " << i + 1 << std::endl;
             this->nodes.push_back(new HuffmanTreeNode(curVal, i+1, true));
         }
     }
@@ -58,7 +52,6 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
         HuffmanTreeNode* internalNode = new HuffmanTreeNode(i, 0, false);
         if (i == 0) {
             if (root->left == NULL) {
-                std::cout << " adding to the left " << std::endl;
                 root->left = internalNode;
             }
             if (this->addToTree(root->left, node, position-1)) {
@@ -66,7 +59,6 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
             }
         } else {
             if (root->right == NULL) {
-                std::cout << " adding to the right " << std::endl;
                 root->right = internalNode;
             }
             if (this->addToTree(root->right, node, position - 1)) {
@@ -90,4 +82,8 @@ void HuffmanTree::decodeTree(HuffmanTreeNode* node, std::string currentString) {
         this->decodeTree(node->right, currentString + "1");
     }
     return;
+}
+
+std::unordered_map<char, std::string> HuffmanTree::getCodes() {
+    return this->codes;
 }

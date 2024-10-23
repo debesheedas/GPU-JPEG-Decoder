@@ -32,4 +32,5 @@ class HuffmanTree {
         void createNodes();
         bool addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int position);
         void decodeTree(HuffmanTreeNode* node, std::string currentString);
+        std::unordered_map<char, std::string> getCodes();
 };
