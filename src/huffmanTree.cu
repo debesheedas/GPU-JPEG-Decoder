@@ -14,15 +14,9 @@ HuffmanTree::HuffmanTree(const std::vector<uint8_t>& bytes) {
 
 // Creates the nodes for the characters.
 void HuffmanTree::createNodes() {
-    int offset = 0;
-    
-    // The first byte belongs to the header.
-    char header = this->bytes[offset];
-    offset = offset + 1;
-
     // Extracting the length information.
     std::vector<char> lengths(this->bytes.begin(), this->bytes.begin() + 16);
-    offset = offset + 16;
+    int offset = 16;
 
     for (int i = 0; i < 16; i++) {
         char curLength = lengths[i];

@@ -19,7 +19,8 @@ JPEGParser::JPEGParser(std::string& imagePath){
 
 void JPEGParser::extract(std::vector<uint8_t>& bytes) {        
     uint16_t tableSize = 0;
-    
+    uint8_t header = 0;
+
     // Using the Stream class for reading bytes.
     Stream* stream = new Stream(bytes);
 
@@ -56,36 +57,29 @@ void JPEGParser::extract(std::vector<uint8_t>& bytes) {
         } else if (marker == 0xffc4) {
             std::cout<< "Extracting Huffman Tables" << std::endl;
             tableSize = stream->getMarker();
-            stream->getNBytes(this->huffmanTables[0], (int) tableSize - 2);
-            this->huffmanTrees[0] = new HuffmanTree(this->huffmanTables[0]);
-            for (const auto& [key, val]: this->huffmanTrees[0]->codes) {
-                std::cout << (int)key << " ((( )))" << val << std::endl;
-            }
+            header = stream->getByte();
+            stream->getNBytes(this->huffmanTables[0], (int) tableSize - 3);
+            this->huffmanTrees[header] = new HuffmanTree(this->huffmanTables[0]);
+
             if (stream->getMarker() == 0xffc4) {
                 tableSize = stream->getMarker();
-                stream->getNBytes(this->huffmanTables[1], (int) tableSize - 2);
-                this->huffmanTrees[1] = new HuffmanTree(this->huffmanTables[1]); 
-                for (const auto& [key, val]: this->huffmanTrees[1]->codes) {
-                    std::cout << (int)key << " dksadjskdjkas " << val << std::endl;
-                }
+                header = stream->getByte();
+                stream->getNBytes(this->huffmanTables[1], (int) tableSize - 3);
+                this->huffmanTrees[header] = new HuffmanTree(this->huffmanTables[1]); 
             }
 
             if (stream->getMarker() == 0xffc4) {
                 tableSize = stream->getMarker();
-                stream->getNBytes(this->huffmanTables[2], (int) tableSize - 2);
-                this->huffmanTrees[2] = new HuffmanTree(this->huffmanTables[2]);
-                for (const auto& [key, val]: this->huffmanTrees[2]->codes) {
-                    std::cout << (int)key << " mmmmmm " << val << std::endl;
-                }
+                header = stream->getByte();
+                stream->getNBytes(this->huffmanTables[2], (int) tableSize - 3);
+                this->huffmanTrees[header] = new HuffmanTree(this->huffmanTables[2]);
             }
 
             if (stream->getMarker() == 0xffc4) {
                 tableSize = stream->getMarker();
-                stream->getNBytes(this->huffmanTables[3], (int) tableSize - 2);
-                this->huffmanTrees[3] = new HuffmanTree(this->huffmanTables[3]);
-                for (const auto& [key, val]: this->huffmanTrees[3]->codes) {
-                    std::cout << (int)key << " ;;;;;;; " << val << std::endl;
-                }
+                header = stream->getByte();
+                stream->getNBytes(this->huffmanTables[3], (int) tableSize - 3);
+                this->huffmanTrees[header] = new HuffmanTree(this->huffmanTables[3]);
             }
         } else if (marker == 0xffda) {
             std::cout<< "Start of Scan" << std::endl;
@@ -117,9 +111,8 @@ void JPEGParser::buildMCU(std::vector<int8_t>& arr, Stream* imageStream, int hf,
     arr[0] = dcCoeff * (int) this->quantTables[quant][0];
     int length = 1;
     while(length < 64) {
-        code = this->huffmanTrees[2+hf]->getCode(imageStream);
+        code = this->huffmanTrees[16+hf]->getCode(imageStream);
 
-        std::cout << " cof de is " << (int) code << std::endl;
         if(code == 0) {
             break;
         }
@@ -127,7 +120,6 @@ void JPEGParser::buildMCU(std::vector<int8_t>& arr, Stream* imageStream, int hf,
         // The first part of the AC key_len 
         // is the number of leading zeros
         if (code > 15) {
-            std::cout << "cofadf " << std::endl;
             length += (code >> 4);
             code = code & 0x0f;
         }
@@ -137,7 +129,6 @@ void JPEGParser::buildMCU(std::vector<int8_t>& arr, Stream* imageStream, int hf,
         if (length < 64) {
             decoded = ByteUtil::DecodeNumber(code, bits);
             arr[length] = decoded * this->quantTables[quant][length];
-            std::cout << int(arr[length]) << std::endl;
             length++;
         }
         length++;
@@ -150,17 +141,15 @@ void JPEGParser::decode_start_of_scan(){
     int oldLumCoeff = 0;
     int oldCbdCoeff = 0;
     int oldCrdCoeff = 0;
-    // int yBlocks = this->height / 8;
-    // int xBlocks = this->width / 8;
-    int yBlocks = 1;
-    int xBlocks = 1;
+    int yBlocks = this->height / 8;
+    int xBlocks = this->width / 8;
+
     Stream* imageStream = new Stream(this->imageData);
     std::vector<std::vector<std::vector<int8_t>>> luminous(xBlocks, std::vector<std::vector<int8_t>>(yBlocks, std::vector<int8_t>(64,0)));
     std::vector<std::vector<std::vector<int8_t>>> chromRed(xBlocks, std::vector<std::vector<int8_t>>(yBlocks, std::vector<int8_t>(64,0)));
     std::vector<std::vector<std::vector<int8_t>>> chromYel(xBlocks, std::vector<std::vector<int8_t>>(yBlocks, std::vector<int8_t>(64,0)));
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            std::cout << " here " << std::endl;
             this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff);
             this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff);
             this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff);
