@@ -1,0 +1,46 @@
+1101010111
+
+
+for 8x8 block number 1
+
+Check the first Byte of Huffman Tree
+
+---------------------------------------------
+DC luminosity value  [size of value in bits (say n) - from HFTree first byte = 00] [read the next n bits, take the 2s complement to get the actual DC lum value]
+
+(runlength,size) - [read from HFTree where first byte == 10 -> abcdef (bit representation) least significant 4 bits of this number (cdef) is the size i.e., just like above say n bits] ab is the number of 0s to append. 
+[read the next n bits, take the 2s complement to get the actual AC lum value]
+
+AC lum val 1 
+
+AC lum val 2 
+.
+.
+.
+
+AC lum val 63 
+
+---------------------------------------------
+
+DC red value [size of value in bits (say n) - from HFTree first byte = 01] [read the next n bits, take the 2s complement  + add to prev DC value to get the actual DC red value]
+
+AC red value 1
+
+AC red value 2
+.
+.
+.
+AC red value 63
+
+---------------------------------------------
+
+DC yellow value [size of value in bits (say n) - from HFTree first byte = 01] [read the next n bits, take the 2s complement  + add to prev DC value to get the actual DC yellow value]
+
+AC yellow value 1
+
+AC yellow value 2
+.
+.
+.
+AC yellow value 63
+---------------------------------------------

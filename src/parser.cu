@@ -4,78 +4,166 @@
 #include <iterator>
 #include <iostream>
 #include <algorithm>
+#include <unordered_map>
 #include "parser.h"
-#include "utils.h"
+
 
 // TODO(bguney): Implement a stream class for global stream state rather than copy.
 
 JPEGParser::JPEGParser(std::string& imagePath){
         std::ifstream input(imagePath, std::ios::binary);
-        std::vector<char> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
         input.close();
         JPEGParser::extract(bytes);
 }
 
-void JPEGParser::extract(std::vector<char> bytes) {        
-    int i = 0;
-    int tableSize = 0;
+void JPEGParser::extract(std::vector<uint8_t>& bytes) {        
+    uint16_t tableSize = 0;
     
-    while(1) {
-        // Application header starts with 0xffe0
-        if((unsigned char) bytes[i] == 0xff && (unsigned char) bytes[i+1] == 0xe0){
+    // Using the Stream class for reading bytes.
+    Stream* stream = new Stream(bytes);
+
+    while (true) {
+        uint16_t marker = stream->getMarker();
+        // std::cout << std::hex << (int)marker << std::endl;
+
+        if (marker == 0xffd8) {
+            std::cout << "Start of the image " << std::endl;
+        } else if (marker == 0xffe0) {
             std::cout<< "Extracting Application Header" << std::endl;
-            tableSize = ByteUtil::getSize(bytes[i+2], bytes[i+3]);
-            std::copy(bytes.begin() + (i+4), bytes.begin() + (i+2+tableSize), std::back_inserter(this->applicationHeader));
-            i = i+1+tableSize; // Increment i by one less than extracted segment because of the i++ at the end of this while loop
-        } 
-        else if ((unsigned char) bytes[i] == 0xff && (unsigned char) bytes[i+1] == 0xdb) {
+            tableSize = stream->getMarker();
+            stream->getNBytes(this->applicationHeader, int(tableSize - 2));
+        } else if (marker == 0xffdb) {
             std::cout<< "Extracting Quant Tables" << std::endl;
-            // Extract Quantization Table 1
-            std::copy(bytes.begin() + (i+5), bytes.begin() + (i+5+64), std::back_inserter(this->quantTable1));
-            i = i + 5 + 64;
-            // Extract Quantization Table 2
-            std::copy(bytes.begin() + (i+5), bytes.begin() + (i+5+64), std::back_inserter(this->quantTable2));
-            i = i + 5 + 63; // Increment i by one less than extracted segment because of the i++ at the end of this while loop
-        }
-        else if ((unsigned char) bytes[i] == 0xff && (unsigned char) bytes[i+1] == 0xc0) {
-            std::cout<< "Extracting Start of Frame" << std::endl;
-            std::copy(bytes.begin() + (i+4), bytes.begin() + (i+19), std::back_inserter(this->startOfFrame));
-            i = i + 18; // Increment i by one less than extracted segment because of the i++ at the end of this while loop
-        }
-        else if ((unsigned char) bytes[i] == 0xff && (unsigned char) bytes[i+1] == 0xc4) {
-            std::cout<< "Extracting Huffman Tables" << std::endl;
-            // Get the table size for Huffman Table 1
-            tableSize = ByteUtil::getSize(bytes[i+2], bytes[i+3]);
-            std::copy(bytes.begin() + (i+4), bytes.begin() + (i+2+tableSize), std::back_inserter(this->huffmanTable1));
-            i = i+2+tableSize;
-            // Identify table size and extract Huffman Table 2
-            tableSize = ByteUtil::getSize(bytes[i+2], bytes[i+3]);
-            std::copy(bytes.begin() + (i+4), bytes.begin() + (i+2+tableSize), std::back_inserter(this->huffmanTable2));
-            i = i+2+tableSize;
-            // Identify table size and extract Huffman Table 3
-            tableSize = ByteUtil::getSize(bytes[i+2], bytes[i+3]);
-            std::copy(bytes.begin() + (i+4), bytes.begin() + (i+2+tableSize), std::back_inserter(this->huffmanTable3));
-            i = i+2+tableSize;
-            // Identify table size and extract Huffman Table 4
-            tableSize = ByteUtil::getSize(bytes[i+2], bytes[i+3]);
-            std::copy(bytes.begin() + (i+4), bytes.begin() + (i+2+tableSize), std::back_inserter(this->huffmanTable4));
-            i = i+1+tableSize; // Increment i by one less than extracted segment because of the i++ at the end of this while loop
-        }
-        else if ((unsigned char) bytes[i] == 0xff && (unsigned char) bytes[i+1] == 0xda) {
-            std::cout<< "Start of Scan" << std::endl;
-            tableSize = ByteUtil::getSize(bytes[i+2], bytes[i+3]);
-            std::copy(bytes.begin() + (i+4), bytes.begin() + (i+2+tableSize), std::back_inserter(this->startOfScan));
-            i = i+2+tableSize;
-            std::cout<< "Extracting Image Data" << std::endl;
-            while (!((unsigned char) bytes[i] == 0xff && (unsigned char) bytes[i+1] == 0xd9)) {
-                if (!((unsigned char) bytes[i] == 0x00 && (unsigned char) bytes[i+1] == 0xff)) {
-                    this->imageData.push_back(bytes[i]);
-                }
-                i++;
+            stream->getMarker();
+            uint8_t destination = stream->getByte();
+            stream->getNBytes(this->quantTables[0], 64);
+            if(stream->getMarker() == 0xffdb) {
+                stream->getMarker();
+                destination = stream->getByte();
+                stream->getNBytes(this->quantTables[1], 64);
+            } else {
+                std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
-            // TODO: Remove 0x00 if it precedes 0xff
+        } else if (marker == 0xffc0) {
+            std::cout<< "Extracting Start of Frame" << std::endl;
+            tableSize = stream->getMarker();
+            stream->getNBytes(this->startOfFrame, (int) tableSize - 2);
+            Stream* frame = new Stream(this->startOfFrame);
+            int precision = frame->getByte();
+            this->height = frame->getMarker();
+            this->width = frame->getMarker();
+        } else if (marker == 0xffc4) {
+            std::cout<< "Extracting Huffman Tables" << std::endl;
+            tableSize = stream->getMarker();
+            stream->getNBytes(this->huffmanTables[0], (int) tableSize - 2);
+            this->huffmanTrees[0] = new HuffmanTree(this->huffmanTables[0]);
+            for (const auto& [key, val]: this->huffmanTrees[0]->codes) {
+                std::cout << (int)key << " ((( )))" << val << std::endl;
+            }
+            if (stream->getMarker() == 0xffc4) {
+                tableSize = stream->getMarker();
+                stream->getNBytes(this->huffmanTables[1], (int) tableSize - 2);
+                this->huffmanTrees[1] = new HuffmanTree(this->huffmanTables[1]); 
+                for (const auto& [key, val]: this->huffmanTrees[1]->codes) {
+                    std::cout << (int)key << " dksadjskdjkas " << val << std::endl;
+                }
+            }
+
+            if (stream->getMarker() == 0xffc4) {
+                tableSize = stream->getMarker();
+                stream->getNBytes(this->huffmanTables[2], (int) tableSize - 2);
+                this->huffmanTrees[2] = new HuffmanTree(this->huffmanTables[2]);
+                for (const auto& [key, val]: this->huffmanTrees[2]->codes) {
+                    std::cout << (int)key << " mmmmmm " << val << std::endl;
+                }
+            }
+
+            if (stream->getMarker() == 0xffc4) {
+                tableSize = stream->getMarker();
+                stream->getNBytes(this->huffmanTables[3], (int) tableSize - 2);
+                this->huffmanTrees[3] = new HuffmanTree(this->huffmanTables[3]);
+                for (const auto& [key, val]: this->huffmanTrees[3]->codes) {
+                    std::cout << (int)key << " ;;;;;;; " << val << std::endl;
+                }
+            }
+        } else if (marker == 0xffda) {
+            std::cout<< "Start of Scan" << std::endl;
+            tableSize = stream->getMarker();
+            stream->getNBytes(this->startOfScan, (int) tableSize - 2);
+            std::cout<< "Extracting Image Data" << std::endl;
+            uint8_t curByte, nextByte = 0;
+
+            do{
+                curByte = stream->getByte();
+                nextByte = stream->getByte();
+
+                if (curByte != 0xff && nextByte != 0x00) {
+                    this->imageData.push_back(curByte);
+                }
+            } while (curByte != 0xff && nextByte != 0xd9);
+
             break;
         }
-        i++;
+    }   
+}
+
+void JPEGParser::buildMCU(std::vector<int8_t>& arr, Stream* imageStream, int hf, int quant, int oldCoeff) {
+    uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
+    int bits = imageStream->getNBits(code);
+    int decoded = ByteUtil::DecodeNumber(code, bits);
+    int dcCoeff = decoded + oldCoeff;
+
+    arr[0] = dcCoeff * (int) this->quantTables[quant][0];
+    int length = 1;
+    while(length < 64) {
+        code = this->huffmanTrees[2+hf]->getCode(imageStream);
+
+        std::cout << " cof de is " << (int) code << std::endl;
+        if(code == 0) {
+            break;
+        }
+
+        // The first part of the AC key_len 
+        // is the number of leading zeros
+        if (code > 15) {
+            std::cout << "cofadf " << std::endl;
+            length += (code >> 4);
+            code = code & 0x0f;
+        }
+
+        bits = imageStream->getNBits(code);
+
+        if (length < 64) {
+            decoded = ByteUtil::DecodeNumber(code, bits);
+            arr[length] = decoded * this->quantTables[quant][length];
+            std::cout << int(arr[length]) << std::endl;
+            length++;
+        }
+        length++;
+    }
+    // TODO: Perform zigzag on mat and call IDCT
+
+}
+
+void JPEGParser::decode_start_of_scan(){
+    int oldLumCoeff = 0;
+    int oldCbdCoeff = 0;
+    int oldCrdCoeff = 0;
+    // int yBlocks = this->height / 8;
+    // int xBlocks = this->width / 8;
+    int yBlocks = 1;
+    int xBlocks = 1;
+    Stream* imageStream = new Stream(this->imageData);
+    std::vector<std::vector<std::vector<int8_t>>> luminous(xBlocks, std::vector<std::vector<int8_t>>(yBlocks, std::vector<int8_t>(64,0)));
+    std::vector<std::vector<std::vector<int8_t>>> chromRed(xBlocks, std::vector<std::vector<int8_t>>(yBlocks, std::vector<int8_t>(64,0)));
+    std::vector<std::vector<std::vector<int8_t>>> chromYel(xBlocks, std::vector<std::vector<int8_t>>(yBlocks, std::vector<int8_t>(64,0)));
+    for (int y = 0; y < yBlocks; y++) {
+        for (int x = 0; x < xBlocks; x++) {
+            std::cout << " here " << std::endl;
+            this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff);
+            this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff);
+            this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff);
+        }
     }
 }

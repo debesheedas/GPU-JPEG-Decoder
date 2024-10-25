@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include<iostream>
 #include "parser.h"
-#include "huffmanTree.h"
-
 
 int main() {
     std::string imagePath = "../profile.jpg";
-    const JPEGParser* parser = new JPEGParser(imagePath);
-    HuffmanTree* tree = new HuffmanTree(parser->huffmanTable1);
+    JPEGParser* parser = new JPEGParser(imagePath);
+    parser->decode_start_of_scan();
+    // HuffmanTree* tree = new HuffmanTree(parser->huffmanTable1);
 }

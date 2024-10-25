@@ -1,7 +1,7 @@
 #include "huffmanTree.h"
 
 // Constructor for HuffmanTree
-HuffmanTree::HuffmanTree(const std::vector<char>& bytes) {
+HuffmanTree::HuffmanTree(const std::vector<uint8_t>& bytes) {
     this->bytes = bytes;
     this->createNodes();
     this->root = new HuffmanTreeNode(0,0,false);
@@ -84,6 +84,23 @@ void HuffmanTree::decodeTree(HuffmanTreeNode* node, std::string currentString) {
     return;
 }
 
-std::unordered_map<char, std::string> HuffmanTree::getCodes() {
-    return this->codes;
+uint8_t HuffmanTree::traverseTree(HuffmanTreeNode* cur, Stream* st) {
+    if (cur->isLeaf) {
+        return cur->val;
+    }
+
+    if (cur->right != NULL && (st->getBit() & 1)) {
+        return this->traverseTree(cur->right, st);
+    }
+
+    if (cur->left != NULL && !(st->getBit() & 0 )) {
+        return this->traverseTree(cur->left, st);
+    }
+
+    return cur->val;
 }
+
+uint8_t HuffmanTree::getCode(Stream* st) {
+    return this->traverseTree(this->root, st);
+}
+
