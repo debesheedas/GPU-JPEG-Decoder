@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <cstdint>
 #include <fstream>
 #include <vector>
 #include <iterator>
@@ -6,6 +7,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include "parser.h"
+#include "IDCT.h"
 
 
 // TODO(bguney): Implement a stream class for global stream state rather than copy.
@@ -26,7 +28,6 @@ void JPEGParser::extract(std::vector<uint8_t>& bytes) {
 
     while (true) {
         uint16_t marker = stream->getMarker();
-        // std::cout << std::hex << (int)marker << std::endl;
 
         if (marker == 0xffd8) {
             std::cout << "Start of the image " << std::endl;
@@ -102,13 +103,20 @@ void JPEGParser::extract(std::vector<uint8_t>& bytes) {
     }   
 }
 
-void JPEGParser::buildMCU(std::vector<int8_t>& arr, Stream* imageStream, int hf, int quant, int oldCoeff) {
+std::pair<std::vector<int8_t>, int> JPEGParser::buildMCU(Stream* imageStream, int hf, int quant, int oldCoeff) {
+    std::cout << "a" << std::endl;
+    IDCT idct = IDCT();
+    std::cout << "b" << std::endl;
     uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
     int bits = imageStream->getNBits(code);
     int decoded = ByteUtil::DecodeNumber(code, bits);
     int dcCoeff = decoded + oldCoeff;
+    std::cout << "c" << std::endl;
 
-    arr[0] = dcCoeff * (int) this->quantTables[quant][0];
+    idct.set_base_value(0, dcCoeff * (int) this->quantTables[quant][0]);
+
+    std::cout << "d" << std::endl;
+
     int length = 1;
     while(length < 64) {
         code = this->huffmanTrees[16+hf]->getCode(imageStream);
@@ -128,12 +136,15 @@ void JPEGParser::buildMCU(std::vector<int8_t>& arr, Stream* imageStream, int hf,
 
         if (length < 64) {
             decoded = ByteUtil::DecodeNumber(code, bits);
-            arr[length] = decoded * this->quantTables[quant][length];
+            idct.set_base_value(length, decoded * this->quantTables[quant][length]);
             length++;
         }
         length++;
     }
-    // TODO: Perform zigzag on mat and call IDCT
+    
+    idct.rearrange_using_zigzag();
+    idct.perform_IDCT();
+    return std::make_pair(idct.get_base(), dcCoeff);
 
 }
 
@@ -150,9 +161,20 @@ void JPEGParser::decode_start_of_scan(){
     std::vector<std::vector<std::vector<int8_t>>> chromYel(xBlocks, std::vector<std::vector<int8_t>>(yBlocks, std::vector<int8_t>(64,0)));
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff);
-            this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff);
-            this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff);
+            std::cout << "here1" << std::endl;
+            auto lumResult = this->buildMCU(imageStream, 0, 0, oldLumCoeff);
+            luminous[x][y] = lumResult.first;
+            oldLumCoeff = lumResult.second;
+            std::cout << "here2" << std::endl;
+            auto chromRedResult = this->buildMCU(imageStream, 1, 1, oldCbdCoeff);
+            chromRed[x][y] = chromRedResult.first;
+            oldCbdCoeff = chromRedResult.second;
+
+            auto chromYelResult = this->buildMCU(imageStream, 1, 1, oldCrdCoeff);
+            chromYel[x][y] = chromYelResult.first;
+            oldCrdCoeff = chromYelResult.second;
+
+            std::cout << "here1" << std::endl;
         }
     }
 }

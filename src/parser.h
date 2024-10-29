@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <cstdint>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -10,7 +11,7 @@ class JPEGParser {
     JPEGParser(std::string& imagePath);
     void extract(std::vector<uint8_t>& bytes);
     void decode_start_of_scan();
-    void buildMCU(std::vector<int8_t>& arr, Stream* imageStream, int hf, int quant, int oldcoeff);
+    std::pair<std::vector<int8_t>, int> buildMCU(Stream* imageStream, int hf, int quant, int oldcoeff);
     int data;
     std::vector<uint8_t> applicationHeader;
     // std::vector<uint8_t> quantTable1;
