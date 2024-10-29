@@ -92,10 +92,10 @@ int* IDCT::rearrange_using_zigzag() {
     }
     cudaFree(d_zigzag);
     cudaFree(d_base);
+  
+    std::cout << "zigzag end" << std::endl;
 
     return &zigzag[0][0];
-
-    std::cout << "zigzag end" << std::endl;
 }
 
 void IDCT::perform_IDCT()
