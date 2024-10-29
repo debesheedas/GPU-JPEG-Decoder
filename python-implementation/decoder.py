@@ -1,3 +1,6 @@
+from PIL import Image
+import numpy as np
+
 from struct import unpack
 from huffman_table import HuffmanTable
 import math
@@ -94,10 +97,41 @@ class JPEG:
         self.width = 0
         self.height = 0
         self.huffman_tables = {}
-
+        self.image_data = None  # This will store the final RGB image array
         # Extracting the data parts of the JPEG image.
         self.data_chunks = self.extract_chunks()
         self.decode()
+
+
+    def draw_matrix(self, block_x, block_y, matL, matCb, matCr):
+        """
+        Draws an 8x8 matrix block on the final RGB image.
+        Converts Y, Cb, Cr to RGB and places it in the appropriate location.
+        """
+        if self.image_data is None:
+            self.image_data = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        
+        # process each pixel in the 8x8 block
+        for y in range(8):
+            for x in range(8):
+                abs_x = block_x * 8 + x
+                abs_y = block_y * 8 + y
+                
+                # check if within image bounds
+                if abs_x < self.width and abs_y < self.height:
+                    Y = matL[y][x]
+                    Cb = matCb[y][x]
+                    Cr = matCr[y][x]
+                    
+                    R, G, B = color_conversion(Y, Cr, Cb)
+                    self.image_data[abs_y, abs_x] = [R, G, B]
+
+    def show_image(self):
+        """
+        Converts the RGB image data into a PIL Image and displays it.
+        """
+        img = Image.fromarray(self.image_data, 'RGB')
+        img.show()
 
     # 0xFF is a special character, if it is in the image it is followed by 0x00 for distinction. 
     # When decoding, we need to remove these 00's.
@@ -165,30 +199,24 @@ class JPEG:
         return i, dccoeff
     
     def start_of_scan(self, data, header_len):
-        # Remove byte stuffing from the data after the header
         data, len_chunk = self.remove_byte_stuffing(data[header_len:])
-        
-        # Initialize a stream from the processed data
         stream = Stream(data)
 
-        # Initialize previous DC coefficients for luminance and chrominance
         prev_luminance_dc = 0
         prev_chrominance_cb_dc = 0
         prev_chrominance_cr_dc = 0
 
-        # Loop through each 8x8 block in the image
         for block_y in range(self.height // 8):
             for block_x in range(self.width // 8):
-                # Build matrices for luminance and chrominance components
                 matL, prev_luminance_dc = self.build_matrix(stream, 0, self.quant[self.quantMapping[0]], prev_luminance_dc)
-                # matCr, prev_chrominance_cr_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[1]], prev_chrominance_cr_dc)
-                # matCb, prev_chrominance_cb_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[2]], prev_chrominance_cb_dc)
+                matCr, prev_chrominance_cr_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[1]], prev_chrominance_cr_dc)
+                matCb, prev_chrominance_cb_dc = self.build_matrix(stream, 1, self.quant[self.quantMapping[2]], prev_chrominance_cb_dc)
 
-                # # Draw the matrix for the current block
-                # self.draw_matrix(block_x, block_y, matL.base, matCb.base, matCr.base)
-                pass
-
-        # Return the total length of processed data including the header
+                # Draw the 8x8 block
+                self.draw_matrix(block_x, block_y, matL.base, matCb.base, matCr.base)
+                
+        # Show the final image
+        self.show_image()
         return len_chunk + header_len
     
     def parse_sof(self, data):
