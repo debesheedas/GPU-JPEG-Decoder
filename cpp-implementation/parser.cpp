@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include "parser.h"
-
+#include "IDCT.h"
 
 // TODO(bguney): Implement a stream class for global stream state rather than copy.
 
@@ -134,7 +134,10 @@ void JPEGParser::buildMCU(std::vector<int8_t>& arr, Stream* imageStream, int hf,
         length++;
     }
     // TODO: Perform zigzag on mat and call IDCT
-
+    IDCT idct(arr);
+    idct.rearrange_using_zigzag();
+    std::vector<int8_t> out = idct.perform_IDCT();
+    arr.assign(out.begin(), out.end());
 }
 
 void JPEGParser::decode_start_of_scan(){
