@@ -1,2 +1,2 @@
-decoder: main.cpp parser.cpp utils.cpp huffmanTree.cpp utils/stream.cpp
-	g++ -o decoder main.cpp parser.cpp utils.cpp huffmanTree.cpp utils/stream.cpp IDCT.cpp
+decoder: main.cpp parser.cpp utils.cpp huffmanTree.cpp utils/stream.cpp utils/color.cpp
+	g++ -o decoder main.cpp parser.cpp utils.cpp huffmanTree.cpp utils/stream.cpp IDCT.cpp utils/color.cpp `pkg-config --cflags --libs opencv4`

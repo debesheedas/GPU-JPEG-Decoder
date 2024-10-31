@@ -5,7 +5,10 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_map>
+#include <opencv2/opencv.hpp>
+
 #include "parser.h"
+#include "utils/color.h"
 #include "IDCT.h"
 
 // TODO(bguney): Implement a stream class for global stream state rather than copy.
@@ -158,4 +161,45 @@ void JPEGParser::decode_start_of_scan(){
             this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff);
         }
     }
+
+    std::vector<float> Y(this->height * this->width);
+    std::vector<float> Cr(this->height * this->width);
+    std::vector<float> Cb(this->height * this->width);
+    std::vector<int> R(this->height * this->width);
+    std::vector<int> G(this->height * this->width);
+    std::vector<int> B(this->height * this->width);
+
+    for (int y = 0; y < yBlocks; y++) {
+        for (int x = 0; x < xBlocks; x++) {
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    int index = i * 8 + j;
+                    int pixelIndex = (y * 8 + i) * this->width + (x * 8 + j);
+
+                    Y[pixelIndex] = luminous[x][y][index];
+                    Cr[pixelIndex] = chromRed[x][y][index];
+                    Cb[pixelIndex] = chromYel[x][y][index];
+                }
+            }
+        }
+    }
+
+    color_conversion(Y, Cr, Cb, R, G, B, this->height * this->width);
+
+    cv::Mat image(this->height, this->width, CV_8UC3);
+    for (int i = 0; i < this->height; i++) {
+        for (int j = 0; j < this->width; j++) {
+            int idx = i * this->width + j;
+            image.at<cv::Vec3b>(i, j) = cv::Vec3b(clamp(B[idx]), clamp(G[idx]), clamp(R[idx]));
+        }
+    }
+
+    cv::imshow("Decoded Image", image);
+    cv::waitKey(0);
+
+
+    std::string outputFilename = "decoded_image.jpg";
+    cv::imwrite(outputFilename, image);
+
+    std::cout << "Image saved as " << outputFilename << std::endl;
 }
