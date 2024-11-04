@@ -1,6 +1,7 @@
 #pragma
 
 #include <vector>
+#include <cmath>
 
 const int IDCT_PRECISION = 8;
 

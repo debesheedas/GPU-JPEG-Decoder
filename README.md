@@ -8,6 +8,22 @@ Goal: Implement a decoder (and optionally an encoder) for the JPEG image format 
 # Step 1:
 Implement a JPEG decoder using python.
 
+## Some notes on compiling on server vs locally
+The g++ compiler version on the server is 11.4.0. If you add the flag -std=c++11 to the command in the makefile, it will throw errors with some of the filesystem related code I have added. So when running on the server, don't add this flag. When running locally, you might need to add this flag depending on your local compiler. 
+
+Hence, the two versions of the makefile are as follows:
+
+1. For server:
+```
+decoder: main.cpp src/parser.cpp src/huffmanTree.cpp src/idct.cpp utils/stream.cpp utils/color.cpp
+	g++ -o decoder main.cpp src/parser.cpp src/huffmanTree.cpp src/idct.cpp utils/stream.cpp utils/color.cpp
+```
+2. For local
+
+``` 
+decoder: main.cpp src/parser.cpp src/huffmanTree.cpp src/idct.cpp utils/stream.cpp utils/color.cpp
+	    g++ -std=c++11 -o decoder main.cpp src/parser.cpp src/huffmanTree.cpp src/idct.cpp utils/stream.cpp utils/color.cpp
+``` 
 ## How to test decoder implementation
 
 Please see the [testing](testing/) folder which contains the following scripts. PLEASE ``cd`` into the testing directory before running these scripts and be careful of the relative addressing used:
@@ -30,7 +46,8 @@ If you want to compare only a particular image, you can pass the second argument
 ```python3 compare.py ../cpp-implementation ./images/5_200x200.jpg```
 
 
-
+## Data Preprocessing scripts:
+1. [image_converter.py](data_preprocessing/image_converter.py) converts regular jpeg images to the specific 444 jpeg format that this decoder works for. All test cases are passed through this script to conver them into this jpeg format.
 
 ### Contributors:
 1. Debeshee Das
