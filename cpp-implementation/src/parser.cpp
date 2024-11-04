@@ -1,6 +1,9 @@
 #include "parser.h"
 
 JPEGParser::JPEGParser(std::string& imagePath){
+    // Extract the file name of the image file from the file path
+    fs::path file_path(imagePath);
+    this->filename = file_path.filename().string();
     std::ifstream input(imagePath, std::ios::binary);
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
     input.close();
@@ -126,7 +129,7 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
     oldCoeff = dcCoeff;
 }
 
-void JPEGParser::decode(){
+void JPEGParser::decode() {
     int oldLumCoeff = 0;
     int oldCbdCoeff = 0;
     int oldCrdCoeff = 0;
@@ -167,18 +170,32 @@ void JPEGParser::decode(){
 
     colorConversion(channels->getY(), channels->getCr(), channels->getCb(), channels->getR(), channels->getG(), channels->getB(), size);
 
-    // Displaying the converted image.
-    cv::Mat image(this->height, this->width, CV_8UC3);
-    for (int i = 0; i < this->height; i++) {
-        for (int j = 0; j < this->width; j++) {
-            int idx = i * this->width + j;
-            image.at<cv::Vec3b>(i, j) = cv::Vec3b((channels->getB()[idx]), channels->getG()[idx], channels->getR()[idx]);
-        }
-    }
+    // Writing the decoded channels to a file instead of displaying using opencv
+    fs::path output_dir = "../testing/cpp_output_arrays"; // Change the directory name here for future CUDA implementations
+    fs::path full_path = output_dir / this->filename;
+    full_path.replace_extension(".array");
+    std::ofstream outfile(full_path);
+    outfile << this->height << " " << this->width << std::endl;
+    std::copy(channels->getR().begin(), channels->getR().end(), std::ostream_iterator<int>(outfile, " "));
+    outfile << std::endl;
+    std::copy(channels->getG().begin(), channels->getG().end(), std::ostream_iterator<int>(outfile, " "));
+    outfile << std::endl;
+    std::copy(channels->getB().begin(), channels->getB().end(), std::ostream_iterator<int>(outfile, " "));
+    outfile.close();
 
-    cv::imshow("Decoded Image", image);
-    cv::waitKey(0);
-    std::string outputFilename = "decoded_image.jpg";
-    cv::imwrite(outputFilename, image);
-    std::cout << "Image saved as " << outputFilename << std::endl;
+    // Displaying the converted image.
+    // cv::Mat image(this->height, this->width, CV_8UC3);
+
+    // for (int i = 0; i < this->height; i++) {
+    //     for (int j = 0; j < this->width; j++) {
+    //         int idx = i * this->width + j;
+    //         image.at<cv::Vec3b>(i, j) = cv::Vec3b((channels->getB()[idx]), channels->getG()[idx], channels->getR()[idx]);
+    //     }
+    // }
+
+    // cv::imshow("Decoded Image", image);
+    // cv::waitKey(0);
+    // std::string outputFilename = "decoded_image.jpg";
+    // cv::imwrite(outputFilename, image);
+    // std::cout << "Image saved as " << outputFilename << std::endl;
 }
