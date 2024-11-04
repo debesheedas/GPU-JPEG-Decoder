@@ -6,3 +6,5 @@ src/decoder
 .vscode/*
 cpp-implementation/decoder
 images.tar
+/image-data
+image-data.zip
