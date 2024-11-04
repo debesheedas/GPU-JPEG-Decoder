@@ -3,6 +3,6 @@
 # Removing the python generated files
 __pycache__/
 src/decoder
-.vscode/c_cpp_properties.json
+.vscode/*
 cpp-implementation/decoder
 images.tar
