@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-with open("./cpp_output_arrays/5_200x200.array", "r") as file:
+with open("./cpp_output_arrays/4_800x600.array", "r") as file:
     line = file.readline().strip()
     height, width = line.split(" ")
     print(height, width)
@@ -18,6 +18,8 @@ blue_channel = np.array(channel_B, dtype=np.uint8).reshape(int(height), int(widt
 image = cv2.merge([blue_channel, green_channel, red_channel])
 
 # Display the image
+output_path = "./4_800x600_cpp.png"
+cv2.imwrite(output_path, image)
 cv2.imshow("RGB Image", image)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
