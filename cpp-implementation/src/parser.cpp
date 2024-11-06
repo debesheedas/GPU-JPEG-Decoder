@@ -89,25 +89,23 @@ void JPEGParser::extract(std::vector<uint8_t>& bytes) {
     }   
 }
 
-void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldCoeff) {
+void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldCoeff, int validWidth = 8, int validHeight = 8) {
     uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
     uint16_t bits = imageStream->getNBits(code);
     int decoded = Stream::decodeNumber(code, bits);
     int dcCoeff = decoded + oldCoeff;
 
-    
     arr[0] = dcCoeff * (int) this->quantTables[quant][0];
     int length = 1;
 
-    while(length < 64) {
-        code = this->huffmanTrees[16+hf]->getCode(imageStream);
+    while (length < 64) {
+        code = this->huffmanTrees[16 + hf]->getCode(imageStream);
 
-        if(code == 0) {
+        if (code == 0) {
             break;
         }
 
-        // The first part of the AC key_len 
-        // is the number of leading zeros
+        // The first part of the AC key length is the number of leading zeros
         if (code > 15) {
             length += (code >> 4);
             code = code & 0x0f;
@@ -121,20 +119,30 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
             length++;
         }
     }
-    
+
+    // Create and process the IDCT for this block with the valid dimensions
     IDCT* idct = new IDCT(arr);
-    idct->rearrangeUsingZigzag();
-    idct->performIDCT();
+    idct->rearrangeUsingZigzag(validWidth, validHeight);
+    idct->performIDCT(validWidth, validHeight);
     arr.assign(idct->base.begin(), idct->base.end());
+
+    // Update oldCoeff for the next MCU
     oldCoeff = dcCoeff;
+
+    delete idct;
 }
 
 void JPEGParser::decode() {
     int oldLumCoeff = 0;
     int oldCbdCoeff = 0;
     int oldCrdCoeff = 0;
-    int yBlocks = this->height / 8;
-    int xBlocks = this->width / 8;
+
+    // Pad the image dimension if it is not divisible by 8
+    int paddedWidth = ((this->width + 7) / 8) * 8;
+    int paddedHeight = ((this->height + 7) / 8) * 8;
+
+    int xBlocks = paddedWidth / 8;
+    int yBlocks = paddedHeight / 8;
 
     Stream* imageStream = new Stream(this->imageData);
     std::vector<std::vector<std::vector<int>>> luminous(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
@@ -143,32 +151,41 @@ void JPEGParser::decode() {
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff);
-            this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff);
-            this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff);
+            // Determine the valid width and height for this block to account for padding
+            int blockWidth = (x == xBlocks - 1 && paddedWidth != this->width) ? this->width % 8 : 8;
+            int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
+
+            this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
+            this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff, blockWidth, blockHeight);
+            this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff, blockWidth, blockHeight);
         }
     }
 
-    int size = this->height * this->width;
+    ImageChannels* channels = new ImageChannels(this->height * this->width);
 
-    ImageChannels* channels = new ImageChannels(size);
-
+    // Write the processed data into the channels, ignoring padded regions
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
-                    int index = i * 8 + j;
-                    int pixelIndex = (y * 8 + i) * this->width + (x * 8 + j);
+                    int pixelY = y * 8 + i;
+                    int pixelX = x * 8 + j;
 
-                    channels->getY()[pixelIndex] = luminous[x][y][index];
-                    channels->getCr()[pixelIndex] = chromYel[x][y][index];
-                    channels->getCb()[pixelIndex] = chromRed[x][y][index];
+                    if (pixelY < this->height && pixelX < this->width) {
+                        int index = i * 8 + j;
+                        int pixelIndex = pixelY * this->width + pixelX;
+
+                        channels->getY()[pixelIndex] = luminous[x][y][index];
+                        channels->getCr()[pixelIndex] = chromYel[x][y][index];
+                        channels->getCb()[pixelIndex] = chromRed[x][y][index];
+                    }
                 }
             }
         }
     }
 
-    colorConversion(channels->getY(), channels->getCr(), channels->getCb(), channels->getR(), channels->getG(), channels->getB(), size);
+    // Convert YCbCr channels to RGB
+    colorConversion(channels->getY(), channels->getCr(), channels->getCb(), channels->getR(), channels->getG(), channels->getB(), this->height * this->width);
 
     // Writing the decoded channels to a file instead of displaying using opencv
     fs::path output_dir = "../testing/cpp_output_arrays"; // Change the directory name here for future CUDA implementations

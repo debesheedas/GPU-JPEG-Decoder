@@ -22,4 +22,4 @@ def convert_to_444_jpeg(input_image_path, output_jpeg_path, quality=95):
         f.write(jpeg_data)
 
 # Usage example
-convert_to_444_jpeg("/Users/ddas/Desktop/Debeshee/ETH/Academics/Sem 3/DPHPC/GPU-JPEG-Decoder/testing/images/5_200x200.jpg", "5_200x200.jpg", quality=95)
+convert_to_444_jpeg("/home/emmyzhou/GPU-JPEG-Decoder/cpp-implementation/dawg.jpg", "/home/emmyzhou/GPU-JPEG-Decoder/cpp-implementation/dawg.jpg", quality=95)

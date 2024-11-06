@@ -57,7 +57,7 @@ class JPEGParser {
 
         // Methods for extracting and building blocks.
         void extract(std::vector<uint8_t>& bytes);
-        void buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldcoeff);
+        void buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldcoeff, int validWidth, int validHeight);
 
     public:
         JPEGParser(std::string& imagePath);
