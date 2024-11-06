@@ -199,20 +199,4 @@ void JPEGParser::decode() {
     outfile << std::endl;
     std::copy(channels->getB().begin(), channels->getB().end(), std::ostream_iterator<int>(outfile, " "));
     outfile.close();
-
-    // Displaying the converted image.
-    // cv::Mat image(this->height, this->width, CV_8UC3);
-
-    // for (int i = 0; i < this->height; i++) {
-    //     for (int j = 0; j < this->width; j++) {
-    //         int idx = i * this->width + j;
-    //         image.at<cv::Vec3b>(i, j) = cv::Vec3b((channels->getB()[idx]), channels->getG()[idx], channels->getR()[idx]);
-    //     }
-    // }
-
-    // cv::imshow("Decoded Image", image);
-    // cv::waitKey(0);
-    // std::string outputFilename = "decoded_image.jpg";
-    // cv::imwrite(outputFilename, image);
-    // std::cout << "Image saved as " << outputFilename << std::endl;
 }
