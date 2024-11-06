@@ -17,7 +17,7 @@ class IDCT {
         std::vector<std::vector<float>> idctTable;
         std::vector<int> base;
         
-        void rearrangeUsingZigzag();
-        void performIDCT();
+        void rearrangeUsingZigzag(int validWidth, int validHeight);
+        void performIDCT(int validWidth, int validHeight);
         void initializeIDCTTable();
 };

@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-with open("./cpp_output_arrays/5_200x200.array", "r") as file:
+with open("./cpp_output_arrays/dawg.array", "r") as file:
     line = file.readline().strip()
     height, width = line.split(" ")
     print(height, width)
