@@ -1,2 +1,2 @@
 decoder: main.cpp src/parser.cpp src/huffmanTree.cpp src/idct.cu utils/stream.cpp utils/color.cpp
-	/usr/local/cuda/bin/nvcc -o decoder main.cpp src/parser.cpp src/huffmanTree.cpp src/idct.cu utils/stream.cpp utils/color.cpp `pkg-config --cflags --libs opencv4`
+	/usr/local/cuda/bin/nvcc -o decoder main.cpp src/parser.cpp src/huffmanTree.cpp src/idct.cu utils/stream.cpp utils/color.cpp

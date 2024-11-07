@@ -2,6 +2,7 @@
 #define STREAM_H
 
 #include <vector>
+#include <cstdint>
 
 /*
     Stream class is used for the easy manipulation of the byte stream.

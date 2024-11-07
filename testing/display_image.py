@@ -1,25 +1,39 @@
+import argparse
 import cv2
 import numpy as np
 
-with open("./cpp_output_arrays/4_800x600.array", "r") as file:
-    line = file.readline().strip()
-    height, width = line.split(" ")
-    print(height, width)
-    channel_R = file.readline().strip().split(" ")
-    channel_G = file.readline().strip().split(" ")
-    channel_B = file.readline().strip().split(" ")
+def load_and_display_array_image(array_file_path):
 
-    print(len(channel_R), len(channel_G), len(channel_B))
+    with open(array_file_path, "r") as file:
 
-red_channel = np.array(channel_R, dtype=np.uint8).reshape(int(height), int(width))  
-green_channel = np.array(channel_G, dtype=np.uint8).reshape(int(height), int(width))
-blue_channel = np.array(channel_B, dtype=np.uint8).reshape(int(height), int(width))
-# Merge the channels into a single BGR image
-image = cv2.merge([blue_channel, green_channel, red_channel])
+        line = file.readline().strip()
+        height, width = map(int, line.split(" "))
+        print(f"Image dimensions: {height}x{width}")
 
-# Display the image
-output_path = "./4_800x600_cpp.png"
-cv2.imwrite(output_path, image)
-cv2.imshow("RGB Image", image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+
+        channel_R = file.readline().strip().split(" ")
+        channel_G = file.readline().strip().split(" ")
+        channel_B = file.readline().strip().split(" ")
+
+        print("Channel lengths:", len(channel_R), len(channel_G), len(channel_B))
+
+    # Convert channels to numpy arrays and reshape to image dimensions
+    red_channel = np.array(channel_R, dtype=np.uint8).reshape(height, width)
+    green_channel = np.array(channel_G, dtype=np.uint8).reshape(height, width)
+    blue_channel = np.array(channel_B, dtype=np.uint8).reshape(height, width)
+
+    # Merge the channels into a single BGR image
+    image = cv2.merge([blue_channel, green_channel, red_channel])
+
+    cv2.imwrite("image.jpeg",image)
+    cv2.imshow("RGB Image", image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Load and display an image from a .array file.")
+    parser.add_argument("array_file_path", type=str, help="Path to the .array file containing image data")
+
+    args = parser.parse_args()
+
+    load_and_display_array_image(args.array_file_path)
