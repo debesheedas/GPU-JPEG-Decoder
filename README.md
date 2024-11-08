@@ -49,9 +49,40 @@ If you want to compare only a particular image, you can pass the second argument
 ## Data Preprocessing scripts:
 1. [image_converter.py](data_preprocessing/image_converter.py) converts regular jpeg images to the specific 444 jpeg format that this decoder works for. All test cases are passed through this script to conver them into this jpeg format.
 
+
+## Setup Benchmark:
+
+To set up the Google Benchmark library, run the `setup_benchmark.sh` script under home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/benchmark:
+
+```bash
+./setup_benchmark.sh
+
+
+1. Setting up Google Benchmark To set up the Google Benchmark library, run the `setup_benchmark.sh` script: ```bash ./setup_benchmark.sh:
+This will install Google Benchmark to ~/benchmark_install.
+
+
+2. Next, go to your project directory cd /home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation:
+
+cmake -DCMAKE_PREFIX_PATH=~/benchmark_install .
+cmake --build . --config Release
+./benchmark_test
+
+This wil configure and build the project and the results will be saved in benchmark_results.txt
+
+3. To plot the results, run:
+
+python3 plot_benchmark.py
+
+The result will be saved in benchmark_decoding_time_plot.png
+
+
 ### Contributors:
 1. Debeshee Das
 2. Beste Guney
 3. Emmy Zhou
 4. Nayanika Debnath
 5. Carlos Fernandez
+
+
+
