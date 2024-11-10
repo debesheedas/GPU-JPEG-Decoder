@@ -188,7 +188,7 @@ void JPEGParser::decode() {
     colorConversion(channels->getY(), channels->getCr(), channels->getCb(), channels->getR(), channels->getG(), channels->getB(), this->height * this->width);
 
     // Writing the decoded channels to a file instead of displaying using opencv
-    fs::path output_dir = "../testing/cpp_output_arrays"; // Change the directory name here for future CUDA implementations
+    fs::path output_dir = "../testing/cuda1_output_arrays"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / this->filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);

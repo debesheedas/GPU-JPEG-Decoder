@@ -51,7 +51,7 @@ void IDCT::performIDCT(int validWidth, int validHeight) {
                         localSum += static_cast<float>(this->zigzag[v][u]) * this->idctTable[u][x] * this->idctTable[v][y];
                     }
                 }
-                out[y][x] = floorf(localSum / 4.0f);
+                out[y][x] = std::floor(localSum / 4.0f);
             }
         }
     }

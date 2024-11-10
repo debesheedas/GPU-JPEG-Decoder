@@ -1,7 +1,6 @@
 #include "idct.h"
-#include <cuda_runtime.h>
 
-__global__ void rearrangeUsingZigzagkernel(int *d_zigzag, const int *d_base, int N, int validWidth, int validHeight)
+__global__ void rearrangeUsingZigzagkernel(int *dZigzag, const int *dBase, int N, int validWidth, int validHeight)
 {
     int x = threadIdx.x;
     int y = threadIdx.y;
@@ -9,39 +8,39 @@ __global__ void rearrangeUsingZigzagkernel(int *d_zigzag, const int *d_base, int
     
     if (idx < N * N) {
         if (x < validWidth && y < validHeight) {
-            d_zigzag[idx] = d_base[d_zigzag[idx]];
+            dZigzag[idx] = dBase[dZigzag[idx]];
         } else {
-            d_zigzag[idx] = 0;
+            dZigzag[idx] = 0;
         }
     }
 }
 
-__global__ void initializeIDCTTableKernel(float *d_idctTable, int precision)
+__global__ void initializeIDCTTableKernel(float *dIdctTable, int precision)
 {
     int u = blockIdx.x * blockDim.x + threadIdx.x;
     int x = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (u < precision && x < precision) {
         float normCoeff = (u == 0) ? (1.0f / sqrtf(2)) : 1.0f;
-        d_idctTable[u * precision + x] = normCoeff * cosf(((2.0f * x + 1.0f) * u * M_PI) / 16.0f);
+        dIdctTable[u * precision + x] = normCoeff * cosf(((2.0f * x + 1.0f) * u * M_PI) / 16.0f);
     }
 }
 
-__global__ void performIDCTKernel(int *d_out, const int *d_zigzag, const float *d_idctTable, int precision, int validWidth, int validHeight)
+__global__ void performIDCTKernel(int *dOut, const int *dZigzag, const float *dIdctTable, int precision, int validWidth, int validHeight)
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     // TODO check if we can put the width/height condition here
     if (x < precision && y < precision && x < validWidth && y < validHeight) {
-        float local_sum = 0.0f;
+        float localSum = 0.0f;
         for (int u = 0; u < precision; u++) {
             for (int v = 0; v < precision; v++) {
-                local_sum += static_cast<float>(d_zigzag[v * precision + u]) * d_idctTable[u * precision + x] * d_idctTable[v * precision + y];
+                localSum += static_cast<float>(dZigzag[v * precision + u]) * dIdctTable[u * precision + x] * dIdctTable[v * precision + y];
             }
         }
 
-        d_out[y * precision + x] = static_cast<int>(floorf(local_sum / 4.0f));
+        dOut[y * precision + x] = static_cast<int>(std::floor(localSum / 4.0f));
     }
 }
 
@@ -63,59 +62,59 @@ void IDCT::initializeIDCTTable()
 {
     int precision = IDCT_PRECISION;
     idctTable.resize(precision*precision);
-    float *d_idctTable;
-    cudaMalloc((void **)&d_idctTable, precision * precision * sizeof(float));
+    float *dIdctTable;
+    cudaMalloc((void **)&dIdctTable, precision * precision * sizeof(float));
 
     dim3 blockSize(8, 8);
     dim3 gridSize((precision + blockSize.x - 1) / blockSize.x, (precision + blockSize.y - 1) / blockSize.y);
 
-    initializeIDCTTableKernel<<<gridSize, blockSize>>>(d_idctTable, precision);
-    cudaMemcpy(idctTable.data(), d_idctTable, precision * precision * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaFree(d_idctTable);
+    initializeIDCTTableKernel<<<gridSize, blockSize>>>(dIdctTable, precision);
+    cudaMemcpy(idctTable.data(), dIdctTable, precision * precision * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaFree(dIdctTable);
 }
 
 void IDCT::rearrangeUsingZigzag(int validWidth, int validHeight)
 {
     int N = 8;
 
-    int *d_zigzag, *d_base;
-    cudaMalloc((void **)&d_zigzag, N * N * sizeof(int));
-    cudaMalloc((void **)&d_base, N * N * sizeof(int));
+    int *dZigzag, *dBase;
+    cudaMalloc((void **)&dZigzag, N * N * sizeof(int));
+    cudaMalloc((void **)&dBase, N * N * sizeof(int));
 
-    cudaMemcpy(d_zigzag, zigzag.data(), N * N * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_base, base.data(), N * N * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(dZigzag, zigzag.data(), N * N * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(dBase, base.data(), N * N * sizeof(int), cudaMemcpyHostToDevice);
 
     dim3 blockSize(N, N);
     dim3 gridSize(1, 1);
 
-    rearrangeUsingZigzagkernel<<<gridSize, blockSize>>>(d_zigzag, d_base, N, validWidth, validHeight);
+    rearrangeUsingZigzagkernel<<<gridSize, blockSize>>>(dZigzag, dBase, N, validWidth, validHeight);
 
-    cudaMemcpy(zigzag.data(), d_zigzag, N * N * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(zigzag.data(), dZigzag, N * N * sizeof(int), cudaMemcpyDeviceToHost);
 
-    cudaFree(d_zigzag);
-    cudaFree(d_base);
+    cudaFree(dZigzag);
+    cudaFree(dBase);
 }
 
 void IDCT::performIDCT(int validWidth, int validHeight)
 {
     int precision = IDCT_PRECISION;
 
-    int* d_zigzag,*d_out;
-    float* d_idctTable;
-    cudaMalloc((void **)&d_zigzag, precision * precision * sizeof(int));
-    cudaMalloc((void **)&d_idctTable, precision * precision * sizeof(float));
-    cudaMalloc((void **)&d_out, precision * precision * sizeof(float));
+    int* dZigzag,*dOut;
+    float* dIdctTable;
+    cudaMalloc((void **)&dZigzag, precision * precision * sizeof(int));
+    cudaMalloc((void **)&dIdctTable, precision * precision * sizeof(float));
+    cudaMalloc((void **)&dOut, precision * precision * sizeof(float));
 
-    cudaMemcpy(d_zigzag, zigzag.data(), precision * precision * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_idctTable, idctTable.data(), precision * precision * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(dZigzag, zigzag.data(), precision * precision * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(dIdctTable, idctTable.data(), precision * precision * sizeof(float), cudaMemcpyHostToDevice);
 
     dim3 blockSize(8, 8);
     dim3 gridSize((precision + blockSize.x - 1) / blockSize.x, (precision + blockSize.y - 1) / blockSize.y);
 
-    performIDCTKernel<<<gridSize, blockSize>>>(d_out, d_zigzag, d_idctTable, precision, validWidth, validHeight);
-    cudaMemcpy(base.data(), d_out, precision * precision * sizeof(float), cudaMemcpyDeviceToHost);
+    performIDCTKernel<<<gridSize, blockSize>>>(dOut, dZigzag, dIdctTable, precision, validWidth, validHeight);
+    cudaMemcpy(base.data(), dOut, precision * precision * sizeof(float), cudaMemcpyDeviceToHost);
 
-    cudaFree(d_zigzag);
-    cudaFree(d_idctTable);
-    cudaFree(d_out);
+    cudaFree(dZigzag);
+    cudaFree(dIdctTable);
+    cudaFree(dOut);
 }

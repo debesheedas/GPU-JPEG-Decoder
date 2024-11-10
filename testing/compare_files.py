@@ -29,8 +29,8 @@ def compare_files(file1, file2):
     return differences
 
 # Specify the paths to your files
-file1_path = '/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/testing/ground_truth/2_400x400.array'
-file2_path = '/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/testing/cuda1_output_arrays/2_400x400.array'
+file1_path = '/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/testing/ground_truth/7_3264x2448.array'
+file2_path = '/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/testing/cuda1_output_arrays/7_3264x2448.array'
 
 # Run comparison and print results
 differences = compare_files(file1_path, file2_path)

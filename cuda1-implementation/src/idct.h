@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cmath>
+#include <cuda_runtime.h>
 
 const int IDCT_PRECISION = 8;
 
