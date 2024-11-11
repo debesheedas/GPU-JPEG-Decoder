@@ -25,6 +25,7 @@ def load_and_display_array_image(array_file_path):
     # Merge the channels into a single BGR image
     image = cv2.merge([blue_channel, green_channel, red_channel])
 
+    cv2.imwrite("image.jpeg",image)
     cv2.imshow("RGB Image", image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
