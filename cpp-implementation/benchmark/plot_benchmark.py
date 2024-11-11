@@ -11,7 +11,7 @@ def get_image_size(filename):
 image_sizes = defaultdict(list)
 
 # Assuming the benchmark results are stored in this path
-benchmark_file_path = '/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/benchmark_results.txt'
+benchmark_file_path = '/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/build/benchmark_results.txt'
 
 # Read the benchmark results from the text file
 with open(benchmark_file_path, 'r') as file:

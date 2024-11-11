@@ -8,3 +8,7 @@ cpp-implementation/decoder
 images.tar
 /image-data
 image-data.zip
+/Images
+cpp-implementation/build/CMakeFiles
+cpp-implementation/build/
+cpp-implementation/benchmark_decoding_time_plot.png
