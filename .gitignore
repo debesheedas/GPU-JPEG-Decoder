@@ -11,4 +11,8 @@ image-data.zip
 /Images
 cpp-implementation/build/CMakeFiles
 cpp-implementation/build/
+cuda0-implementation/build/CMakeFiles
+cuda0-implementation/build/
 cpp-implementation/benchmark_decoding_time_plot.png
+/benchmarking_dataset
+cuda0-implementation/benchmark/images/

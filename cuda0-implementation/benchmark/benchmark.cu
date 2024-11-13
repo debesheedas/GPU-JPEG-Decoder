@@ -3,10 +3,11 @@
 #include <vector>
 #include <chrono>
 #include <fstream>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/src/parser.h"
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda0-implementation/src/parser.h"
+#include <cuda_runtime.h>
 
-// Benchmark function to measure JPEG decoding performance for various image sizes
-static void BM_JPEGDecoder(benchmark::State& state) {
+// Benchmark function to measure JPEG decoding performance for various image sizes (CUDA)
+static void BM_JPEGDecoderCUDA(benchmark::State& state) {
     // Define image sizes to benchmark (e.g., 120x120, 800x600, etc.)
     std::vector<std::string> imagePaths = {
         "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/benchmark/images/1_320x240.jpg", 
@@ -29,26 +30,38 @@ static void BM_JPEGDecoder(benchmark::State& state) {
     
     // Measure the decoding time for each iteration
     for (auto _ : state) {
-        JPEGParser parser(imagePath); // No optimization applied, just baseline
-        auto start_time = std::chrono::high_resolution_clock::now();
-        parser.decode(); // Run the decoding to benchmark it
-        auto end_time = std::chrono::high_resolution_clock::now();
-        
-        std::chrono::duration<double> decode_duration = end_time - start_time;
-        state.SetIterationTime(decode_duration.count()); // Set iteration time for benchmark
+        // CUDA-specific logic for handling image decoding
+        JPEGParser parser(imagePath); // Initialize the parser
+
+        // Start CUDA timer for GPU-based operations
+        cudaEvent_t start, stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+
+        cudaEventRecord(start);
+
+        parser.decode(); // Run the decoding on the GPU (Make sure parser.decodeCUDA() is implemented for GPU)
+
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        state.SetIterationTime(milliseconds / 1000.0); // Set iteration time for benchmark
 
         // Save the image size and time to the result file
-        resultFile << imagePath << " " << decode_duration.count() * 1000 << "\n"; // time in ms
+        resultFile << imagePath << " " << milliseconds << "\n"; // Time in milliseconds
     }
 
     resultFile.close();
 }
 
 // Register the benchmark for different image sizes
-BENCHMARK(BM_JPEGDecoder)
+BENCHMARK(BM_JPEGDecoderCUDA)
     ->Unit(benchmark::kMillisecond)  // Set the time unit to milliseconds
-    ->Iterations(10)  // Number of iterations for each benchmark
-    ->DenseRange(0, 9, 1);  // Image size index range (0 to 4) based on imagePaths size
+    ->Iterations(100)  // Number of iterations for each benchmark
+    ->DenseRange(0, 9, 1);  // Image size index range (0 to 9) based on imagePaths size
 
 // Main function to run all registered benchmarks
 BENCHMARK_MAIN();

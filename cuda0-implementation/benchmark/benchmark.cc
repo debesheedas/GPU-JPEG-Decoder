@@ -47,7 +47,7 @@ static void BM_JPEGDecoder(benchmark::State& state) {
 // Register the benchmark for different image sizes
 BENCHMARK(BM_JPEGDecoder)
     ->Unit(benchmark::kMillisecond)  // Set the time unit to milliseconds
-    ->Iterations(10)  // Number of iterations for each benchmark
+    ->Iterations(100)  // Number of iterations for each benchmark
     ->DenseRange(0, 9, 1);  // Image size index range (0 to 4) based on imagePaths size
 
 // Main function to run all registered benchmarks

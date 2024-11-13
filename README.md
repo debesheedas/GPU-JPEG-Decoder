@@ -65,6 +65,7 @@ This will install Google Benchmark to ~/benchmark_install.
 2. Next, go to your project directory cd /home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation:
 
 cmake -DCMAKE_PREFIX_PATH=~/benchmark_install .
+cmake --build . --clean-first --config Release
 cmake --build . --config Release
 ./benchmark_test
 
