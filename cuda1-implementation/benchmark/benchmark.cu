@@ -4,7 +4,7 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda0-implementation/src/parser.h"
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda1-implementation/src/parser.h"
 #include <cuda_runtime.h>
 
 namespace fs = std::filesystem;
@@ -41,7 +41,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
 
         parser.extract();
         parser.decode();
-
+        
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
 

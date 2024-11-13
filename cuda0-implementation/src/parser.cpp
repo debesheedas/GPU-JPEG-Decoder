@@ -6,16 +6,17 @@ JPEGParser::JPEGParser(std::string& imagePath){
     this->filename = file_path.filename().string();
     std::ifstream input(imagePath, std::ios::binary);
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
+    this->readBytes = bytes;
     input.close();
-    JPEGParser::extract(bytes);
+    // JPEGParser::extract(bytes);
 }
 
-void JPEGParser::extract(std::vector<uint8_t>& bytes) {        
+void JPEGParser::extract() {        
     uint16_t tableSize = 0;
     uint8_t header = 0;
 
     // Using the Stream class for reading bytes.
-    Stream* stream = new Stream(bytes);
+    Stream* stream = new Stream(this->readBytes);
 
     while (true) {
         uint16_t marker = stream->getMarker();
@@ -161,7 +162,7 @@ void JPEGParser::decode() {
         }
     }
 
-    ImageChannels* channels = new ImageChannels(this->height * this->width);
+   this->channels = new ImageChannels(this->height * this->width);
 
     // Write the processed data into the channels, ignoring padded regions
     for (int y = 0; y < yBlocks; y++) {
@@ -175,9 +176,9 @@ void JPEGParser::decode() {
                         int index = i * 8 + j;
                         int pixelIndex = pixelY * this->width + pixelX;
 
-                        channels->getY()[pixelIndex] = luminous[x][y][index];
-                        channels->getCr()[pixelIndex] = chromYel[x][y][index];
-                        channels->getCb()[pixelIndex] = chromRed[x][y][index];
+                        this->channels->getY()[pixelIndex] = luminous[x][y][index];
+                        this->channels->getCr()[pixelIndex] = chromYel[x][y][index];
+                        this->channels->getCb()[pixelIndex] = chromRed[x][y][index];
                     }
                 }
             }
@@ -185,18 +186,20 @@ void JPEGParser::decode() {
     }
 
     // Convert YCbCr channels to RGB
-    colorConversion(channels->getY(), channels->getCr(), channels->getCb(), channels->getR(), channels->getG(), channels->getB(), this->height * this->width);
+    colorConversion(this->channels->getY(), this->channels->getCr(), this->channels->getCb(), this->channels->getR(), this->channels->getG(), this->channels->getB(), this->height * this->width);
+}
 
+void JPEGParser::write() {
     // Writing the decoded channels to a file instead of displaying using opencv
     fs::path output_dir = "../testing/cuda0_output_arrays"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / this->filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);
     outfile << this->height << " " << this->width << std::endl;
-    std::copy(channels->getR().begin(), channels->getR().end(), std::ostream_iterator<int>(outfile, " "));
+    std::copy(this->channels->getR().begin(), this->channels->getR().end(), std::ostream_iterator<int>(outfile, " "));
     outfile << std::endl;
-    std::copy(channels->getG().begin(), channels->getG().end(), std::ostream_iterator<int>(outfile, " "));
+    std::copy(this->channels->getG().begin(), this->channels->getG().end(), std::ostream_iterator<int>(outfile, " "));
     outfile << std::endl;
-    std::copy(channels->getB().begin(), channels->getB().end(), std::ostream_iterator<int>(outfile, " "));
+    std::copy(this->channels->getB().begin(), this->channels->getB().end(), std::ostream_iterator<int>(outfile, " "));
     outfile.close();
 }

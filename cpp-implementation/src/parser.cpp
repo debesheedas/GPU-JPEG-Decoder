@@ -187,7 +187,6 @@ void JPEGParser::decode() {
 
     // Convert YCbCr channels to RGB
     colorConversion(this->channels->getY(), this->channels->getCr(), this->channels->getCb(), this->channels->getR(), this->channels->getG(), this->channels->getB(), this->height * this->width);
-
     
 }
 
