@@ -8,7 +8,7 @@ enable_testing()
 find_package(CUDAToolkit REQUIRED)
 
 # Set CUDA standard
-set(CMAKE_CUDA_STANDARD 14)
+set(CMAKE_CUDA_STANDARD 17)
 
 # Enable CUDA separable compilation
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
@@ -35,7 +35,7 @@ add_executable(decoder
 target_link_libraries(decoder PRIVATE $<TARGET_OBJECTS:idct_obj> /usr/local/cuda/lib64/libcudart.so)
 
 add_executable(benchmark_test
-    benchmark/benchmark.cc
+    benchmark/benchmark.cu
     src/parser.cpp
     src/huffmanTree.cpp
     src/idct.cu

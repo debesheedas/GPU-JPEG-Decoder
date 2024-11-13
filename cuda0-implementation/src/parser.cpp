@@ -23,11 +23,11 @@ void JPEGParser::extract(std::vector<uint8_t>& bytes) {
         if (marker == MARKERS[0]) {
             continue;
         } else if (marker == MARKERS[1]) {
-            std::cout<< "Extracting Application Header" << std::endl;
+            // std::cout<< "Extracting Application Header" << std::endl;
             tableSize = stream->getMarker();
             stream->getNBytes(this->applicationHeader, int(tableSize - 2));
         } else if (marker == MARKERS[2]) {
-            std::cout<< "Extracting Quant Tables" << std::endl;
+            // std::cout<< "Extracting Quant Tables" << std::endl;
             stream->getMarker();
             uint8_t destination = stream->getByte();
             stream->getNBytes(this->quantTables[0], 64);
@@ -39,7 +39,7 @@ void JPEGParser::extract(std::vector<uint8_t>& bytes) {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
         } else if (marker == MARKERS[3]) {
-            std::cout<< "Extracting Start of Frame" << std::endl;
+            // std::cout<< "Extracting Start of Frame" << std::endl;
             tableSize = stream->getMarker();
             stream->getNBytes(this->startOfFrame, (int) tableSize - 2);
             Stream* frame = new Stream(this->startOfFrame);
@@ -47,7 +47,7 @@ void JPEGParser::extract(std::vector<uint8_t>& bytes) {
             this->height = frame->getMarker();
             this->width = frame->getMarker();
         } else if (marker == MARKERS[4]) {
-            std::cout<< "Extracting Huffman Tables" << std::endl;
+            // std::cout<< "Extracting Huffman Tables" << std::endl;
             tableSize = stream->getMarker();
             header = stream->getByte();
             stream->getNBytes(this->huffmanTables[0], (int) tableSize - 3);
@@ -64,7 +64,7 @@ void JPEGParser::extract(std::vector<uint8_t>& bytes) {
                 }
             }
         } else if (marker == MARKERS[5]) {
-            std::cout<< "Start of Scan" << std::endl;
+            // std::cout<< "Start of Scan" << std::endl;
             tableSize = stream->getMarker();
             stream->getNBytes(this->startOfScan, (int) tableSize - 2);
             uint8_t curByte, prevByte = 0x00;

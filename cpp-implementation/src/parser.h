@@ -43,6 +43,7 @@ class JPEGParser {
     private:
         // Parts of the jpeg file.
         std::string filename;
+        std::vector<uint8_t> readBytes;
         std::vector<uint8_t> applicationHeader;
         std::unordered_map<int,std::vector<uint8_t>> quantTables;
         std::vector<uint8_t> startOfFrame;
@@ -50,16 +51,18 @@ class JPEGParser {
         std::unordered_map<int,HuffmanTree*> huffmanTrees;
         std::vector<uint8_t> startOfScan;
         std::vector<uint8_t> imageData;
+        ImageChannels* channels;
 
         // Image features.
         int height;
         int width;
 
         // Methods for extracting and building blocks.
-        void extract(std::vector<uint8_t>& bytes);
         void buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldcoeff, int validWidth, int validHeight);
 
     public:
         JPEGParser(std::string& imagePath);
+        void extract();
         void decode();
+        void write();
 };
