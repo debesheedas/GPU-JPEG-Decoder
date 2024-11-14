@@ -1,10 +1,12 @@
 *.DS_Store
-
 # Removing the python generated files
 __pycache__/
-src/decoder
 .vscode/*
-cpp-implementation/decoder
+*/decoder
 images.tar
 /image-data
 image-data.zip
+/Images
+*/build/
+/benchmarking_dataset
+*/images/
