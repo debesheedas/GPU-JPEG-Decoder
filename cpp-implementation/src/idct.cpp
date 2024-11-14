@@ -1,9 +1,11 @@
 #ifndef IDCT_H
 #define IDCT_H
 
+#include <iostream>
 #include "idct.h"
 
-IDCT::IDCT(std::vector<int>& base): idctTable(8, std::vector<float>(8,0)), zigzag {
+
+IDCT::IDCT(std::vector<int>& base): idctTable(8, std::vector<double>(8,0)), zigzag {
             {0, 1, 5, 6, 14, 15, 27, 28},
             {2, 4, 7, 13, 16, 26, 29, 42},
             {3, 8, 12, 17, 25, 30, 41, 43},
@@ -20,8 +22,8 @@ IDCT::IDCT(std::vector<int>& base): idctTable(8, std::vector<float>(8,0)), zigza
 void IDCT::initializeIDCTTable() {
     for (int u = 0; u < IDCT_PRECISION; u++) {
         for (int x = 0; x < IDCT_PRECISION; x++) {
-            float normCoeff = (u == 0) ? (1.0f / sqrtf(2.0f)) : 1.0f; 
-            this->idctTable[u][x] = normCoeff * cosf(((2.0f * x + 1.0f) * u * M_PI) / 16.0f); 
+            double normCoeff = (u == 0) ? (1.0 / sqrt(2.0)) : 1.0; 
+            this->idctTable[u][x] = normCoeff * cos(((2.0 * x + 1.0) * u * M_PI) / 16.0); 
         }
     }
 }
@@ -40,18 +42,18 @@ void IDCT::rearrangeUsingZigzag(int validWidth, int validHeight) {
 }
 
 void IDCT::performIDCT(int validWidth, int validHeight) {
-    std::vector<std::vector<float>> out(8, std::vector<float>(8, 0));
+    std::vector<std::vector<double>> out(8, std::vector<double>(8, 0));
 
     for (int x = 0; x < 8; x++) {
         for (int y = 0; y < 8; y++) {
             if (x < validWidth && y < validHeight) {
-                float localSum = 0.0f;
+                double localSum = 0.0;
                 for (int u = 0; u < IDCT_PRECISION; u++) {
                     for (int v = 0; v < IDCT_PRECISION; v++) {
-                        localSum += static_cast<float>(this->zigzag[v][u]) * this->idctTable[u][x] * this->idctTable[v][y];
+                        localSum += this->zigzag[v][u] * this->idctTable[u][x] * this->idctTable[v][y];
                     }
                 }
-                out[y][x] = std::floor(localSum / 4.0f);
+                out[y][x] = std::floor(localSum / 4.0);
             }
         }
     }
@@ -59,7 +61,7 @@ void IDCT::performIDCT(int validWidth, int validHeight) {
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             if (i < validHeight && j < validWidth) {
-                float value = out[i][j];
+                double value = out[i][j];
                 int convertedValue = static_cast<int>(value);
                 this->base[i * 8 + j] = convertedValue;
             }
