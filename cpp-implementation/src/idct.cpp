@@ -1,7 +1,9 @@
 #ifndef IDCT_H
 #define IDCT_H
 
+#include <iostream>
 #include "idct.h"
+
 
 IDCT::IDCT(std::vector<int>& base): idctTable(8, std::vector<float>(8,0)), zigzag {
             {0, 1, 5, 6, 14, 15, 27, 28},
@@ -24,6 +26,12 @@ void IDCT::initializeIDCTTable() {
             this->idctTable[u][x] = normCoeff * cosf(((2.0f * x + 1.0f) * u * M_PI) / 16.0f); 
         }
     }
+    //  for (int i = 0; i < IDCT_PRECISION; i++) {
+    //     for (int j =0; j < IDCT_PRECISION; j++) {
+    //         std::cout << idctTable[i][j] << " ";
+    //     }
+    //     }
+    //     std::cout << std::endl;
 }
 
 void IDCT::rearrangeUsingZigzag(int validWidth, int validHeight) {
@@ -65,6 +73,10 @@ void IDCT::performIDCT(int validWidth, int validHeight) {
             }
         }
     }
+    for (int i = 0; i < IDCT_PRECISION * IDCT_PRECISION; i++) {
+            std::cout << base[i] << " ";
+        }
+        std::cout << std::endl;
 }
 
 #endif
