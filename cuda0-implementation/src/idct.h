@@ -15,9 +15,8 @@ class IDCT {
 
     public:
         IDCT(std::vector<int>& base);
-        std::vector<float> idctTable;
+        std::vector<double> idctTable;
         std::vector<int> base;
-        bool done;
         
         void rearrangeUsingZigzag(int validWidth, int validHeight);
         void performIDCT(int validWidth, int validHeight);

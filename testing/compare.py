@@ -15,38 +15,25 @@ def read_output(filename):
 
     return data
 
-def test_array_equality(implementation_folder, image_path):
-    # print("Testing equality with ground truth")
-    # print(implementation_folder, image_path)
-    
+def test_array_equality(implementation_folder, image_path):    
     decoder_executable = os.path.join(implementation_folder, "decoder")
 
     subprocess.run(["./"+decoder_executable, image_path], check=True)
-    # subprocess.run(["python3", "./baseline.py", "python_output.txt"], check=True)
     
     implementation_type = os.path.basename(implementation_folder).split('-')[0]
 
     image_name = os.path.basename(image_path).replace(".jpg", ".array")
-    # print(implementation_type)
-    # print(image_name)
     ground_truth = read_output(os.path.join("./ground_truth/", image_name))
     decoder_output = read_output(os.path.join(implementation_type+"_output_arrays", image_name))
     assert(len(ground_truth) == len(decoder_output))
-    # assert(ground_truth == decoder_output)
     if ground_truth == decoder_output:
         print("Congratulations! Output matches ground truth!", image_name)
         return True
     else:
-        #print(len(ground_truth[1]))
         differences = [(i, ground_truth[1][i], decoder_output[1][i]) for i in range(len(ground_truth[1])) if ground_truth[1][i] != decoder_output[1][i]]
-        print(differences)
-        differences = [(i, ground_truth[2][i], decoder_output[2][i]) for i in range(len(ground_truth[2])) if ground_truth[2][i] != decoder_output[2][i]]
-        print(differences)
+        print(differences)        
         print("Output does not match the ground truth!", image_name)
     return False
-    # for r1, r2 in zip(ground_truth, decoder_output):
-    #     for el1, el2 in zip(r1, r2):
-    #         self.assertTrue((abs(el1 - el2) < TOL), "Arrays are not equal")
 
 
 if __name__ == '__main__':
