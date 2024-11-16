@@ -122,11 +122,7 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
     }
 
     // Create and process the IDCT for this block with the valid dimensions
-    int temp[64];
-    for (int i = 0; i < 64; i++) {
-        temp[i] = arr[i];
-    }
-    IDCT* idct = new IDCT(temp);
+    IDCT* idct = new IDCT(arr);
     idct->rearrangeUsingZigzag(validWidth, validHeight);
     idct->performIDCT(validWidth, validHeight);
 

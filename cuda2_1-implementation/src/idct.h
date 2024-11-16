@@ -15,8 +15,8 @@ class IDCT {
         int* zigzag;
 
     public:
-        IDCT(int* base);
-        std::vector<double> idctTable;
+        IDCT(std::vector<int>& base);
+        double* idctTable;
         int* base;
         
         void rearrangeUsingZigzag(int validWidth, int validHeight);

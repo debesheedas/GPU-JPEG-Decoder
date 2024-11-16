@@ -44,7 +44,7 @@ __global__ void performIDCTKernel(int *dOut, const int *dZigzag, const double *d
 }
 
 
-IDCT::IDCT(int* baseValues): idctTable(8*8) {
+IDCT::IDCT(std::vector<int>& baseValues) {
     
     int zigzagEntries[64] = {
         0, 1, 5, 6, 14, 15, 27, 28,
@@ -59,8 +59,9 @@ IDCT::IDCT(int* baseValues): idctTable(8*8) {
 
     cudaMalloc((void**)&zigzag, 64 * sizeof(int));
     cudaMalloc((void**)&base, 64 * sizeof(int));
+    cudaMalloc((void **)&idctTable, 64 * sizeof(double));
     cudaMemcpy(zigzag, zigzagEntries, 64 * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(base, baseValues, 64 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(base, baseValues.data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
 
 
     this->initializeIDCTTable();
@@ -69,20 +70,15 @@ IDCT::IDCT(int* baseValues): idctTable(8*8) {
 
 void IDCT::initializeIDCTTable()
 {
-    int precision = IDCT_PRECISION;
-    idctTable.resize(precision*precision);
-    double *dIdctTable;
-    cudaMalloc((void **)&dIdctTable, precision * precision * sizeof(double));
-
     int blockSize = 64;
     int gridSize = (64 + blockSize - 1) / blockSize;
-    initializeIDCTTableKernel<<<gridSize, blockSize>>>(dIdctTable, 64);
+    initializeIDCTTableKernel<<<gridSize, blockSize>>>(idctTable, 64);
     // dim3 blockSize(8, 8);
     // dim3 gridSize((precision + blockSize.x - 1) / blockSize.x, (precision + blockSize.y - 1) / blockSize.y);
 
-    initializeIDCTTableKernel<<<gridSize, blockSize>>>(dIdctTable, precision);
-    cudaMemcpy(idctTable.data(), dIdctTable, precision * precision * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaFree(dIdctTable);
+    //initializeIDCTTableKernel<<<gridSize, blockSize>>>(dIdctTable, precision);
+    //cudaMemcpy(idctTable.data(), dIdctTable, precision * precision * sizeof(double), cudaMemcpyDeviceToHost);
+    //cudaFree(dIdctTable);
 }
 
 void IDCT::rearrangeUsingZigzag(int validWidth, int validHeight)
@@ -98,15 +94,10 @@ void IDCT::performIDCT(int validWidth, int validHeight)
 {
     int precision = IDCT_PRECISION;
 
-    double* dIdctTable;
-    cudaMalloc((void **)&dIdctTable, precision * precision * sizeof(double));
-
-    cudaMemcpy(dIdctTable, idctTable.data(), precision * precision * sizeof(double), cudaMemcpyHostToDevice);
-
     dim3 blockSize(8, 8);
     dim3 gridSize((precision + blockSize.x - 1) / blockSize.x, (precision + blockSize.y - 1) / blockSize.y);
 
-    performIDCTKernel<<<gridSize, blockSize>>>(base, zigzag, dIdctTable, precision, validWidth, validHeight);
+    performIDCTKernel<<<gridSize, blockSize>>>(base, zigzag, idctTable, precision, validWidth, validHeight);
 
-    cudaFree(dIdctTable);
+    //cudaFree(dIdctTable);
 }
