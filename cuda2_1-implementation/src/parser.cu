@@ -1,13 +1,23 @@
 #include "parser.h"
 
-JPEGParser::JPEGParser(std::string& imagePath){
+JPEGParser::JPEGParser(std::string& imagePath): quantTables(2) {
     // Extract the file name of the image file from the file path
     fs::path file_path(imagePath);
     this->filename = file_path.filename().string();
     std::ifstream input(imagePath, std::ios::binary);
+
+
+    
+
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
     this->readBytes = bytes;
     input.close();
+    
+    quantTables[0] = new uint8_t[64];
+    quantTables[1] = new uint8_t[64];
+
+    //cudaMalloc((void**)&quantTables[0], 64 * sizeof(uint8_t));
+    //cudaMalloc((void**)&quantTables[1], 64 * sizeof(uint8_t));
     // JPEGParser::extract(bytes);
 }
 
@@ -31,11 +41,15 @@ void JPEGParser::extract() {
             // std::cout<< "Extracting Quant Tables" << std::endl;
             stream->getMarker();
             uint8_t destination = stream->getByte();
-            stream->getNBytes(this->quantTables[0], 64);
+            stream->getNBytes(quantTables[0], 64);
+            //std::cout << " got the goods **** " << std::endl;
+            ///cudaMemcpy(quantTables[0], temp, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
             if(stream->getMarker() == MARKERS[2]) {
                 stream->getMarker();
                 destination = stream->getByte();
-                stream->getNBytes(this->quantTables[1], 64);
+                stream->getNBytes(quantTables[1], 64);
+                //std::cout << " got the goods " << std::endl;
+                //cudaMemcpy(quantTables[1], temp, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
             } else {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
@@ -90,13 +104,63 @@ void JPEGParser::extract() {
     }   
 }
 
-void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldCoeff, int validWidth = 8, int validHeight = 8) {
+// void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldCoeff, int validWidth = 8, int validHeight = 8) {
+//     uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
+//     uint16_t bits = imageStream->getNBits(code);
+//     int decoded = Stream::decodeNumber(code, bits);
+//     int dcCoeff = decoded + oldCoeff;
+
+//     arr[0] = dcCoeff * (int) this->quantTables[quant][0];
+//     int length = 1;
+
+//     while (length < 64) {
+//         code = this->huffmanTrees[16 + hf]->getCode(imageStream);
+
+//         if (code == 0) {
+//             break;
+//         }
+
+//         // The first part of the AC key length is the number of leading zeros
+//         if (code > 15) {
+//             length += (code >> 4);
+//             code = code & 0x0f;
+//         }
+
+//         bits = imageStream->getNBits(code);
+//         if (length < 64) {
+//             decoded = Stream::decodeNumber(code, bits);
+//             int val = decoded * this->quantTables[quant][length];
+//             arr[length] = val;
+//             length++;
+//         }
+//     }
+
+//     // Create and process the IDCT for this block with the valid dimensions
+//     IDCT* idct = new IDCT(arr);
+//     idct->rearrangeUsingZigzag(validWidth, validHeight);
+//     idct->performIDCT(validWidth, validHeight);
+
+//     cudaMemcpy(arr.data(), idct->base, 64*sizeof(int), cudaMemcpyDeviceToHost);
+//     // for (int i = 0; i < 64; i++) {
+//     //     arr[i] = idct->baseTemp[i];
+//     // }
+//     //arr.assign(idct->base.begin(), idct->base.end());
+
+//     // Update oldCoeff for the next MCU
+//     oldCoeff = dcCoeff;
+
+//     delete idct;
+// }
+
+
+void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int& oldCoeff, int validWidth = 8, int validHeight = 8) {
+    std::vector<int> hostBuffer(64,0);
     uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
     uint16_t bits = imageStream->getNBits(code);
     int decoded = Stream::decodeNumber(code, bits);
     int dcCoeff = decoded + oldCoeff;
 
-    arr[0] = dcCoeff * (int) this->quantTables[quant][0];
+    hostBuffer[0] = dcCoeff * (int) this->quantTables[quant][0];
     int length = 1;
 
     while (length < 64) {
@@ -115,21 +179,29 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
         bits = imageStream->getNBits(code);
         if (length < 64) {
             decoded = Stream::decodeNumber(code, bits);
-            int val = decoded * this->quantTables[quant][length];
-            arr[length] = val;
+            int val = decoded * (int) this->quantTables[quant][length];
+            hostBuffer[length] = val;
             length++;
         }
     }
 
     // Create and process the IDCT for this block with the valid dimensions
+    //int temp[64];
+    //cudaMalloc((void**)&temp, 64 * sizeof(int));
+
+    //cudaMemcpy(temp, hostBuffer.data(), 64*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(arr, hostBuffer.data(), 64*sizeof(int), cudaMemcpyHostToDevice);
     IDCT* idct = new IDCT(arr);
     idct->rearrangeUsingZigzag(validWidth, validHeight);
     idct->performIDCT(validWidth, validHeight);
 
-    cudaMemcpy(arr.data(), idct->base, 64*sizeof(int), cudaMemcpyDeviceToHost);
+    //arr = idct->base;
+    cudaMemcpy(arr, idct->base, 64*sizeof(int), cudaMemcpyDeviceToDevice);
+    std::cout << " ehrhehrhe " << std::endl;
     // for (int i = 0; i < 64; i++) {
-    //     arr[i] = idct->baseTemp[i];
+    //     arr[i] = idct->base[i];
     // }
+    std::cout << " lettt  " << std::endl;
     //arr.assign(idct->base.begin(), idct->base.end());
 
     // Update oldCoeff for the next MCU
@@ -137,6 +209,7 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
 
     delete idct;
 }
+
 
 void JPEGParser::decode() {
     int oldLumCoeff = 0;
@@ -155,8 +228,14 @@ void JPEGParser::decode() {
     std::vector<std::vector<std::vector<int>>> chromRed(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
     std::vector<std::vector<std::vector<int>>> chromYel(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
 
-    // int temp[64];
-    // cudaMalloc((void**)&temp, 64 * sizeof(int));
+    
+
+    //std::vector<std::vector<int*>> luminous(xBlocks, std::vector<int*>(yBlocks, int[64]));
+    //std::vector<std::vector<int*>> chromRed(xBlocks, std::vector<int*>(yBlocks, nullptr));
+    //std::vector<std::vector<int*>> chromYel(xBlocks, std::vector<int*>(yBlocks, nullptr));
+
+    int* temp;
+    cudaMalloc((void**)&temp, 64 * sizeof(int));
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
@@ -164,12 +243,15 @@ void JPEGParser::decode() {
             int blockWidth = (x == xBlocks - 1 && paddedWidth != this->width) ? this->width % 8 : 8;
             int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
 
-            this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
-
-            //this->buildMCU(temp, imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
-            //cudaMemcpy(luminous[x][y].data(), temp, 64 * sizeof(int), cudaMemcpyDeviceToHost);
-            this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff, blockWidth, blockHeight);
-            this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff, blockWidth, blockHeight);
+            this->buildMCU(temp, imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
+            cudaMemcpy(luminous[x][y].data(), temp, 64 * sizeof(int), cudaMemcpyDeviceToHost);
+            this->buildMCU(temp, imageStream, 1, 1, oldCbdCoeff, blockWidth, blockHeight);
+            cudaMemcpy(chromRed[x][y].data(), temp, 64 * sizeof(int), cudaMemcpyDeviceToHost);
+            this->buildMCU(temp, imageStream, 1, 1, oldCrdCoeff, blockWidth, blockHeight);
+            cudaMemcpy(chromYel[x][y].data(), temp, 64 * sizeof(int), cudaMemcpyDeviceToHost);
+            // this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
+            // this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff, blockWidth, blockHeight);
+            // this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff, blockWidth, blockHeight);
         }
     }
 

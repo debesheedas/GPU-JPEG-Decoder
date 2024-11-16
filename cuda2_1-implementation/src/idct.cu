@@ -44,7 +44,7 @@ __global__ void performIDCTKernel(int *dOut, const int *dZigzag, const double *d
 }
 
 
-IDCT::IDCT(std::vector<int>& baseValues) {
+IDCT::IDCT(int* baseValue): base(baseValue) {
     
     int zigzagEntries[64] = {
         0, 1, 5, 6, 14, 15, 27, 28,
@@ -58,10 +58,10 @@ IDCT::IDCT(std::vector<int>& baseValues) {
     };
 
     cudaMalloc((void**)&zigzag, 64 * sizeof(int));
-    cudaMalloc((void**)&base, 64 * sizeof(int));
+    //cudaMalloc((void**)&base, 64 * sizeof(int));
     cudaMalloc((void **)&idctTable, 64 * sizeof(double));
     cudaMemcpy(zigzag, zigzagEntries, 64 * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(base, baseValues.data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
+    //cudaMemcpy(base, baseValues.data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
 
     blockSize = 64;
     gridSize = (64 + blockSize - 1) / blockSize;

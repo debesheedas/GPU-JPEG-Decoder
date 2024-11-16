@@ -17,7 +17,8 @@ class IDCT {
         int gridSize;
 
     public:
-        IDCT(std::vector<int>& base);
+        IDCT(int* base);
+        //IDCT(std::vector<int>& base);
         double* idctTable;
         int* base;
         
