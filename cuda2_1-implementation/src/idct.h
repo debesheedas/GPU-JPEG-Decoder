@@ -13,6 +13,8 @@ class IDCT {
     private:
         // std::vector<int> zigzag;
         int* zigzag;
+        int blockSize;
+        int gridSize;
 
     public:
         IDCT(std::vector<int>& base);
