@@ -1,20 +1,32 @@
 #include "parser.h"
 
+__global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
+{
+    int id = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (id < numThreads) {
+        double normCoeff = ((id / 8) == 0) ? (1.0 / sqrt(2.0)) : 1.0;
+        dIdctTable[id] = normCoeff * cos(((2.0 * (id%8) + 1.0) * (id/8) * M_PI) / 16.0);
+    }
+}
+
 JPEGParser::JPEGParser(std::string& imagePath): quantTables(2) {
     // Extract the file name of the image file from the file path
     fs::path file_path(imagePath);
     this->filename = file_path.filename().string();
     std::ifstream input(imagePath, std::ios::binary);
-
-
     
-
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
     this->readBytes = bytes;
     input.close();
     
     quantTables[0] = new uint8_t[64];
     quantTables[1] = new uint8_t[64];
+
+    int blockSize = 64;
+    int gridSize = (64 + blockSize - 1) / blockSize;
+    cudaMalloc((void**)&idctTable, 64 * sizeof(double));
+    initializeIDCTTableKernel<<<blockSize, gridSize>>>(idctTable, 64);
 
     //cudaMalloc((void**)&quantTables[0], 64 * sizeof(uint8_t));
     //cudaMalloc((void**)&quantTables[1], 64 * sizeof(uint8_t));
@@ -138,7 +150,7 @@ void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int&
 
     // Create and process the IDCT for this block with the valid dimensions
     cudaMemcpy(arr, hostBuffer.data(), 64*sizeof(int), cudaMemcpyHostToDevice);
-    IDCT* idct = new IDCT(arr);
+    IDCT* idct = new IDCT(arr, idctTable);
     idct->rearrangeUsingZigzag(validWidth, validHeight);
     idct->performIDCT(validWidth, validHeight);
 

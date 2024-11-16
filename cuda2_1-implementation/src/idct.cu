@@ -15,16 +15,6 @@ __global__ void rearrangeUsingZigzagkernel(int *dZigzag, const int *dBase, int n
     }
 }
 
-__global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
-{
-    int id = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (id < numThreads) {
-        double normCoeff = ((id / 8) == 0) ? (1.0 / sqrt(2.0)) : 1.0;
-        dIdctTable[id] = normCoeff * cos(((2.0 * (id%8) + 1.0) * (id/8) * M_PI) / 16.0);
-    }
-}
-
 __global__ void performIDCTKernel(int *dOut, const int *dZigzag, const double *dIdctTable, int precision, int validWidth, int validHeight)
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -44,7 +34,7 @@ __global__ void performIDCTKernel(int *dOut, const int *dZigzag, const double *d
 }
 
 
-IDCT::IDCT(int* baseValue): base(baseValue) {
+IDCT::IDCT(int* baseValue, double* idct): base(baseValue), idctTable(idct) {
     
     int zigzagEntries[64] = {
         0, 1, 5, 6, 14, 15, 27, 28,
@@ -59,19 +49,14 @@ IDCT::IDCT(int* baseValue): base(baseValue) {
 
     cudaMalloc((void**)&zigzag, 64 * sizeof(int));
     //cudaMalloc((void**)&base, 64 * sizeof(int));
-    cudaMalloc((void **)&idctTable, 64 * sizeof(double));
+    //cudaMalloc((void **)&idctTable, 64 * sizeof(double));
     cudaMemcpy(zigzag, zigzagEntries, 64 * sizeof(int), cudaMemcpyHostToDevice);
     //cudaMemcpy(base, baseValues.data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
 
     blockSize = 64;
     gridSize = (64 + blockSize - 1) / blockSize;
-    this->initializeIDCTTable();
+    //this->initializeIDCTTable();
     
-}
-
-void IDCT::initializeIDCTTable()
-{
-    initializeIDCTTableKernel<<<gridSize, blockSize>>>(idctTable, 64);
 }
 
 void IDCT::rearrangeUsingZigzag(int validWidth, int validHeight)
