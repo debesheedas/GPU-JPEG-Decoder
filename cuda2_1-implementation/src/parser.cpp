@@ -122,10 +122,18 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
     }
 
     // Create and process the IDCT for this block with the valid dimensions
-    IDCT* idct = new IDCT(arr);
+    int temp[64];
+    for (int i = 0; i < 64; i++) {
+        temp[i] = arr[i];
+    }
+    IDCT* idct = new IDCT(temp);
     idct->rearrangeUsingZigzag(validWidth, validHeight);
     idct->performIDCT(validWidth, validHeight);
-    arr.assign(idct->base.begin(), idct->base.end());
+
+    for (int i = 0; i < 64; i++) {
+        arr[i] = idct->base[i];
+    }
+    //arr.assign(idct->base.begin(), idct->base.end());
 
     // Update oldCoeff for the next MCU
     oldCoeff = dcCoeff;
@@ -150,6 +158,9 @@ void JPEGParser::decode() {
     std::vector<std::vector<std::vector<int>>> chromRed(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
     std::vector<std::vector<std::vector<int>>> chromYel(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
 
+    // int temp[64];
+    // cudaMalloc((void**)&temp, 64 * sizeof(int));
+
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
             // Determine the valid width and height for this block to account for padding
@@ -157,6 +168,9 @@ void JPEGParser::decode() {
             int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
 
             this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
+
+            //this->buildMCU(temp, imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
+            //cudaMemcpy(luminous[x][y].data(), temp, 64 * sizeof(int), cudaMemcpyDeviceToHost);
             this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff, blockWidth, blockHeight);
             this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff, blockWidth, blockHeight);
         }
@@ -192,7 +206,7 @@ void JPEGParser::decode() {
 
 void JPEGParser::write() {
     // Writing the decoded channels to a file instead of displaying using opencv
-    fs::path output_dir = "../testing/cuda2_output_arrays"; // Change the directory name here for future CUDA implementations
+    fs::path output_dir = "../testing/cuda2_1_output_arrays"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / this->filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);
