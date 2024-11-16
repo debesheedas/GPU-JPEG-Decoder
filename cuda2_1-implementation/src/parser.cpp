@@ -130,9 +130,10 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
     idct->rearrangeUsingZigzag(validWidth, validHeight);
     idct->performIDCT(validWidth, validHeight);
 
-    for (int i = 0; i < 64; i++) {
-        arr[i] = idct->base[i];
-    }
+    cudaMemcpy(arr.data(), idct->base, 64*sizeof(int), cudaMemcpyDeviceToHost);
+    // for (int i = 0; i < 64; i++) {
+    //     arr[i] = idct->baseTemp[i];
+    // }
     //arr.assign(idct->base.begin(), idct->base.end());
 
     // Update oldCoeff for the next MCU
