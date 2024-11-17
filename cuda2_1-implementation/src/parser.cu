@@ -1,4 +1,64 @@
 #include "parser.h"
+#include <cuda_runtime.h>
+
+__global__ void writeToChannelsKernel(
+    float* d_Y, float* d_Cr, float* d_Cb,
+    const int* d_luminous, const int* d_chromYel, const int* d_chromRed,
+    int width, int height, int xBlocks, int yBlocks) {
+
+    // int x = blockIdx.x;
+    // int y = blockIdx.y;
+    // int i = threadIdx.y;
+    // int j = threadIdx.x;
+
+    int x = blockIdx.x * 8 + threadIdx.x;  // equal to pixelX, pixelY
+    int y = blockIdx.y * 8 + threadIdx.y; 
+
+    if (x < width && y < height) {
+        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
+        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
+        int pixelIndex = y * width + x;
+
+        d_Y[pixelIndex] = d_luminous[blockIndex * 64 + pixelIndexInBlock];
+        d_Cr[pixelIndex] = d_chromYel[blockIndex * 64 + pixelIndexInBlock];
+        d_Cb[pixelIndex] = d_chromRed[blockIndex * 64 + pixelIndexInBlock];
+    }
+
+    
+
+    // int pixelY = y * 8 + i;
+    // int pixelX = x * 8 + j;
+
+    // if (pixelY < height && pixelX < width) {
+    //     int blockIndex = (y * xBlocks + x) * 64;
+    //     int index = i * 8 + j;
+    //     int pixelIndex = pixelY * width + pixelX;
+
+    //     d_Y[pixelIndex] = d_luminous[pixelIndex];
+    //     d_Cr[pixelIndex] = d_chromYel[pixelIndex];
+    //     d_Cb[pixelIndex] = d_chromRed[pixelIndex];
+    // }
+}
+
+void writeToChannelsCUDA(
+    ImageChannels* channels,
+    float* d_Y, float* d_Cr, float* d_Cb,
+    int width, int height, int xBlocks, int yBlocks,
+    int* d_luminous, int* d_chromYel, int* d_chromRed) {
+
+    int totalPixels = width * height;
+    size_t channelSize = totalPixels * sizeof(float);
+
+    dim3 blockSize(8, 8);
+    dim3 gridSize(xBlocks, yBlocks);
+    writeToChannelsKernel<<<gridSize, blockSize>>>(
+        d_Y, d_Cr, d_Cb, d_luminous, d_chromYel, d_chromRed, width, height, xBlocks, yBlocks);
+
+    cudaMemcpy(channels->getY().data(), d_Y, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getCr().data(), d_Cr, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getCb().data(), d_Cb, channelSize, cudaMemcpyDeviceToHost);
+}
+
 
 __global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
 {
@@ -198,31 +258,64 @@ void JPEGParser::decode() {
 
     this->channels = new ImageChannels(this->height * this->width);
 
-    // Write the processed data into the channels, ignoring padded regions
+    float *d_Y, *d_Cr, *d_Cb;
+    size_t channelSize = width * height * sizeof(int);
+    cudaMalloc((void**)&d_Y, channelSize);
+    cudaMalloc((void**)&d_Cr, channelSize);
+    cudaMalloc((void**)&d_Cb, channelSize);
+
+    size_t blockDataSize = xBlocks * yBlocks * 64 * sizeof(float);
+    int *d_luminous, *d_chromYel, *d_chromRed;
+    cudaMalloc((void**)&d_luminous, blockDataSize);
+    cudaMalloc((void**)&d_chromYel, blockDataSize);
+    cudaMalloc((void**)&d_chromRed, blockDataSize);
+
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
-                    int pixelY = y * 8 + i;
-                    int pixelX = x * 8 + j;
-
-                    if (pixelY < this->height && pixelX < this->width) {
-                        int index = i * 8 + j;
-                        int pixelIndex = pixelY * this->width + pixelX;
-
-                        this->channels->getY()[pixelIndex] = luminous[x][y][index];
-                        this->channels->getCr()[pixelIndex] = chromYel[x][y][index];
-                        this->channels->getCb()[pixelIndex] = chromRed[x][y][index];
-                    }
-                }
-            }
+            cudaMemcpy(d_luminous + (y * xBlocks + x) * 64, luminous[x][y].data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_chromYel + (y * xBlocks + x) * 64, chromYel[x][y].data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_chromRed + (y * xBlocks + x) * 64, chromRed[x][y].data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
         }
     }
+
+    writeToChannelsCUDA(this->channels, d_Y, d_Cr, d_Cb, this->width, this->height, xBlocks, yBlocks, d_luminous, d_chromYel, d_chromRed);
+
+    // cudaFree(d_Y);
+    // cudaFree(d_Cr);
+    // cudaFree(d_Cb);
+    // cudaFree(d_luminous);
+    // cudaFree(d_chromYel);
+    // cudaFree(d_chromRed);
+
+    // writeToChannelsCUDA(this->channels, luminous, chromYel, chromRed, this->width, this->height, xBlocks, yBlocks);
+
+    // // Write the processed data into the channels, ignoring padded regions
+    // for (int y = 0; y < yBlocks; y++) {
+    //     for (int x = 0; x < xBlocks; x++) {
+    //         for (int i = 0; i < 8; i++) {
+    //             for (int j = 0; j < 8; j++) {
+    //                 int pixelY = y * 8 + i;
+    //                 int pixelX = x * 8 + j;
+
+    //                 if (pixelY < this->height && pixelX < this->width) {
+    //                     int index = i * 8 + j;
+    //                     int pixelIndex = pixelY * this->width + pixelX;
+
+    //                     this->channels->getY()[pixelIndex] = luminous[x][y][index];
+    //                     this->channels->getCr()[pixelIndex] = chromYel[x][y][index];
+    //                     this->channels->getCb()[pixelIndex] = chromRed[x][y][index];
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
     // Convert YCbCr channels to RGB
     colorConversion(this->channels->getY(), this->channels->getCr(), this->channels->getCb(), this->channels->getR(), this->channels->getG(), this->channels->getB(), this->height * this->width);
 
 }
+
+
 
 void JPEGParser::write() {
     // Writing the decoded channels to a file instead of displaying using opencv
