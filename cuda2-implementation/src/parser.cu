@@ -208,13 +208,6 @@ void JPEGParser::decode() {
     cudaMalloc((void**)&chromRed, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromYel, 64 * xBlocks * yBlocks * sizeof(int));
 
-    //std::vector<std::vector<std::vector<int>>> luminous(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
-    //std::vector<std::vector<std::vector<int>>> chromRed(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
-    //std::vector<std::vector<std::vector<int>>> chromYel(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
-
-    //int* temp;
-    //cudaMalloc((void**)&temp, 64 * sizeof(int));
-
     int *curLuminous = luminous;
     int *curChromRed = chromRed;
     int *curChromYel = chromYel;
@@ -231,7 +224,6 @@ void JPEGParser::decode() {
             curLuminous += 64;
             curChromRed += 64;
             curChromYel += 64;
-
         }
     }
 
