@@ -201,12 +201,23 @@ void JPEGParser::decode() {
     int yBlocks = paddedHeight / 8;
 
     Stream* imageStream = new Stream(this->imageData);
-    std::vector<std::vector<std::vector<int>>> luminous(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
-    std::vector<std::vector<std::vector<int>>> chromRed(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
-    std::vector<std::vector<std::vector<int>>> chromYel(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
 
-    int* temp;
-    cudaMalloc((void**)&temp, 64 * sizeof(int));
+    // Allocating the channels in the GPU memory.
+    int *luminous, *chromRed, *chromYel;
+    cudaMalloc((void**)&luminous, 64 * xBlocks * yBlocks * sizeof(int));
+    cudaMalloc((void**)&chromRed, 64 * xBlocks * yBlocks * sizeof(int));
+    cudaMalloc((void**)&chromYel, 64 * xBlocks * yBlocks * sizeof(int));
+
+    //std::vector<std::vector<std::vector<int>>> luminous(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
+    //std::vector<std::vector<std::vector<int>>> chromRed(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
+    //std::vector<std::vector<std::vector<int>>> chromYel(xBlocks, std::vector<std::vector<int>>(yBlocks, std::vector<int>(64,0)));
+
+    //int* temp;
+    //cudaMalloc((void**)&temp, 64 * sizeof(int));
+
+    int *curLuminous = luminous;
+    int *curChromRed = chromRed;
+    int *curChromYel = chromYel;
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
@@ -214,12 +225,13 @@ void JPEGParser::decode() {
             int blockWidth = (x == xBlocks - 1 && paddedWidth != this->width) ? this->width % 8 : 8;
             int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
 
-            this->buildMCU(temp, imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
-            cudaMemcpy(luminous[x][y].data(), temp, 64 * sizeof(int), cudaMemcpyDeviceToHost);
-            this->buildMCU(temp, imageStream, 1, 1, oldCbdCoeff, blockWidth, blockHeight);
-            cudaMemcpy(chromRed[x][y].data(), temp, 64 * sizeof(int), cudaMemcpyDeviceToHost);
-            this->buildMCU(temp, imageStream, 1, 1, oldCrdCoeff, blockWidth, blockHeight);
-            cudaMemcpy(chromYel[x][y].data(), temp, 64 * sizeof(int), cudaMemcpyDeviceToHost);
+            this->buildMCU(curLuminous, imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
+            this->buildMCU(curChromRed, imageStream, 1, 1, oldCbdCoeff, blockWidth, blockHeight);
+            this->buildMCU(curChromYel, imageStream, 1, 1, oldCrdCoeff, blockWidth, blockHeight);
+            curLuminous += 64;
+            curChromRed += 64;
+            curChromYel += 64;
+
         }
     }
 
@@ -231,51 +243,7 @@ void JPEGParser::decode() {
     cudaMalloc((void**)&d_Cr, channelSize);
     cudaMalloc((void**)&d_Cb, channelSize);
 
-    size_t blockDataSize = xBlocks * yBlocks * 64 * sizeof(int);
-    int *d_luminous, *d_chromYel, *d_chromRed;
-    cudaMalloc((void**)&d_luminous, blockDataSize);
-    cudaMalloc((void**)&d_chromYel, blockDataSize);
-    cudaMalloc((void**)&d_chromRed, blockDataSize);
-
-    for (int y = 0; y < yBlocks; y++) {
-        for (int x = 0; x < xBlocks; x++) {
-            cudaMemcpy(d_luminous + (y * xBlocks + x) * 64, luminous[x][y].data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
-            cudaMemcpy(d_chromYel + (y * xBlocks + x) * 64, chromYel[x][y].data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
-            cudaMemcpy(d_chromRed + (y * xBlocks + x) * 64, chromRed[x][y].data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
-        }
-    }
-
-    writeToChannelsCUDA(this->channels, d_Y, d_Cr, d_Cb, this->width, this->height, xBlocks, yBlocks, d_luminous, d_chromYel, d_chromRed);
-
-    // cudaFree(d_Y);
-    // cudaFree(d_Cr);
-    // cudaFree(d_Cb);
-    // cudaFree(d_luminous);
-    // cudaFree(d_chromYel);
-    // cudaFree(d_chromRed);
-
-    // writeToChannelsCUDA(this->channels, luminous, chromYel, chromRed, this->width, this->height, xBlocks, yBlocks);
-
-    // // Write the processed data into the channels, ignoring padded regions
-    // for (int y = 0; y < yBlocks; y++) {
-    //     for (int x = 0; x < xBlocks; x++) {
-    //         for (int i = 0; i < 8; i++) {
-    //             for (int j = 0; j < 8; j++) {
-    //                 int pixelY = y * 8 + i;
-    //                 int pixelX = x * 8 + j;
-
-    //                 if (pixelY < this->height && pixelX < this->width) {
-    //                     int index = i * 8 + j;
-    //                     int pixelIndex = pixelY * this->width + pixelX;
-
-    //                     this->channels->getY()[pixelIndex] = luminous[x][y][index];
-    //                     this->channels->getCr()[pixelIndex] = chromYel[x][y][index];
-    //                     this->channels->getCb()[pixelIndex] = chromRed[x][y][index];
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
+    writeToChannelsCUDA(this->channels, d_Y, d_Cr, d_Cb, this->width, this->height, xBlocks, yBlocks, luminous, chromYel, chromRed);
 
     // Convert YCbCr channels to RGB
     colorConversion(this->channels->getY(), this->channels->getCr(), this->channels->getCb(), this->channels->getR(), this->channels->getG(), this->channels->getB(), this->height * this->width);
