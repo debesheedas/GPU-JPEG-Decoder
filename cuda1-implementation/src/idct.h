@@ -11,12 +11,14 @@ const int IDCT_PRECISION = 8;
 */
 class IDCT {
     private:
-        std::vector<int> zigzag;
+        int* zigzag;
+        int blockSize;
+        int gridSize;
 
     public:
-        IDCT(std::vector<int>& base);
-        std::vector<double> idctTable;
-        std::vector<int> base;
+        IDCT(int* base, double* idctTable);
+        double* idctTable;
+        int* base;
         
         void rearrangeUsingZigzag(int validWidth, int validHeight);
         void performIDCT(int validWidth, int validHeight);
