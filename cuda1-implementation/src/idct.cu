@@ -20,7 +20,7 @@ __global__ void performIDCTKernel(int *dOut, const int *dZigzag, const double *d
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    // TODO(bguney): Further parallelize here.
+    // TODO(carlos): Further parallelize here.
     if (x < precision && y < precision && x < validWidth && y < validHeight) {
         double localSum = 0.0;
         for (int u = 0; u < precision; u++) {
@@ -48,15 +48,10 @@ IDCT::IDCT(int* baseValue, double* idct): base(baseValue), idctTable(idct) {
     };
 
     cudaMalloc((void**)&zigzag, 64 * sizeof(int));
-    //cudaMalloc((void**)&base, 64 * sizeof(int));
-    //cudaMalloc((void **)&idctTable, 64 * sizeof(double));
     cudaMemcpy(zigzag, zigzagEntries, 64 * sizeof(int), cudaMemcpyHostToDevice);
-    //cudaMemcpy(base, baseValues.data(), 64 * sizeof(int), cudaMemcpyHostToDevice);
 
     blockSize = 64;
-    gridSize = (64 + blockSize - 1) / blockSize;
-    //this->initializeIDCTTable();
-    
+    gridSize = (64 + blockSize - 1) / blockSize;    
 }
 
 void IDCT::rearrangeUsingZigzag(int validWidth, int validHeight)

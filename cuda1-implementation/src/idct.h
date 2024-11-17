@@ -11,7 +11,6 @@ const int IDCT_PRECISION = 8;
 */
 class IDCT {
     private:
-        // std::vector<int> zigzag;
         int* zigzag;
         int blockSize;
         int gridSize;

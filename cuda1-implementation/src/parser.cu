@@ -27,10 +27,6 @@ JPEGParser::JPEGParser(std::string& imagePath): quantTables(2) {
     int gridSize = (64 + blockSize - 1) / blockSize;
     cudaMalloc((void**)&idctTable, 64 * sizeof(double));
     initializeIDCTTableKernel<<<blockSize, gridSize>>>(idctTable, 64);
-
-    //cudaMalloc((void**)&quantTables[0], 64 * sizeof(uint8_t));
-    //cudaMalloc((void**)&quantTables[1], 64 * sizeof(uint8_t));
-    // JPEGParser::extract(bytes);
 }
 
 void JPEGParser::extract() {        
@@ -46,27 +42,20 @@ void JPEGParser::extract() {
         if (marker == MARKERS[0]) {
             continue;
         } else if (marker == MARKERS[1]) {
-            // std::cout<< "Extracting Application Header" << std::endl;
             tableSize = stream->getMarker();
             stream->getNBytes(this->applicationHeader, int(tableSize - 2));
         } else if (marker == MARKERS[2]) {
-            // std::cout<< "Extracting Quant Tables" << std::endl;
             stream->getMarker();
             uint8_t destination = stream->getByte();
             stream->getNBytes(quantTables[0], 64);
-            //std::cout << " got the goods **** " << std::endl;
-            ///cudaMemcpy(quantTables[0], temp, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
             if(stream->getMarker() == MARKERS[2]) {
                 stream->getMarker();
                 destination = stream->getByte();
                 stream->getNBytes(quantTables[1], 64);
-                //std::cout << " got the goods " << std::endl;
-                //cudaMemcpy(quantTables[1], temp, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
             } else {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
         } else if (marker == MARKERS[3]) {
-            // std::cout<< "Extracting Start of Frame" << std::endl;
             tableSize = stream->getMarker();
             stream->getNBytes(this->startOfFrame, (int) tableSize - 2);
             Stream* frame = new Stream(this->startOfFrame);
@@ -74,7 +63,6 @@ void JPEGParser::extract() {
             this->height = frame->getMarker();
             this->width = frame->getMarker();
         } else if (marker == MARKERS[4]) {
-            // std::cout<< "Extracting Huffman Tables" << std::endl;
             tableSize = stream->getMarker();
             header = stream->getByte();
             stream->getNBytes(this->huffmanTables[0], (int) tableSize - 3);
@@ -91,7 +79,6 @@ void JPEGParser::extract() {
                 }
             }
         } else if (marker == MARKERS[5]) {
-            // std::cout<< "Start of Scan" << std::endl;
             tableSize = stream->getMarker();
             stream->getNBytes(this->startOfScan, (int) tableSize - 2);
             uint8_t curByte, prevByte = 0x00;
