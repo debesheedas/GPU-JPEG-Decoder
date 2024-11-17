@@ -17,6 +17,9 @@ set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 add_library(idct_obj OBJECT src/idct.h)
 set_target_properties(idct_obj PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
+add_library(parser_obj OBJECT src/parser.h)
+set_target_properties(parser_obj PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
 # Explicitly set the CUDA library path (optional)
 list(APPEND CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES "/usr/local/cuda/lib64")
 
@@ -24,7 +27,7 @@ list(APPEND CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES "/usr/local/cuda/lib64")
 
 add_executable(decoder
     main.cpp
-    src/parser.cpp
+    src/parser.cu
     src/huffmanTree.cpp
     src/idct.cu
     utils/stream.cpp
@@ -32,11 +35,11 @@ add_executable(decoder
 )
 
 # Link the object file and CUDA runtime library to the decoder executable
-target_link_libraries(decoder PRIVATE $<TARGET_OBJECTS:idct_obj> /usr/local/cuda/lib64/libcudart.so)
+target_link_libraries(decoder PRIVATE $<TARGET_OBJECTS:idct_obj> $<TARGET_OBJECTS:parser_obj> /usr/local/cuda/lib64/libcudart.so)
 
 add_executable(benchmark_test
     benchmark/benchmark.cu
-    src/parser.cpp
+    src/parser.cu
     src/huffmanTree.cpp
     src/idct.cu
     utils/stream.cpp
@@ -44,7 +47,7 @@ add_executable(benchmark_test
 )
 
 # Link the object file and CUDA runtime library to the benchmark_test executable
-target_link_libraries(benchmark_test PRIVATE $<TARGET_OBJECTS:idct_obj> /usr/local/cuda/lib64/libcudart.so)
+target_link_libraries(benchmark_test PRIVATE $<TARGET_OBJECTS:idct_obj> $<TARGET_OBJECTS:parser_obj> /usr/local/cuda/lib64/libcudart.so)
 
 # Include CUDA include directories
 target_include_directories(decoder PRIVATE ${CUDAToolkit_INCLUDE_DIRS})

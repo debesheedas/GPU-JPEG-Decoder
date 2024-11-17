@@ -41,6 +41,12 @@ void Stream::getNBytes(std::vector<uint8_t>& arr, int length) {
     }
 }
 
+void Stream::getNBytes(uint8_t* arr, int length) {
+    for (int i = 0; i < length; i++) {
+        arr[i] = this->getByte();
+    }
+}
+
 int Stream::decodeNumber(uint8_t code, int bits) {
     int l = 1 << (code - 1);  // Calculate 2^(code - 1) using bit shift
     
