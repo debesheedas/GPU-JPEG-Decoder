@@ -31,7 +31,7 @@ void writeToChannelsCUDA(
         d_Y, d_Cr, d_Cb, d_luminous, d_chromYel, d_chromRed, width, height, xBlocks, yBlocks);
 }
 
-__global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int* redChannel, int* greenChannel, int* blueChannel, int width, int height) {
+__global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
     int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
     int i = y * width + x;
@@ -45,27 +45,27 @@ __global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYe
         int castedBlue = static_cast<int>(blue + 128);
 
         if (castedRed > 255) {
-            redChannel[i] = 255;
+            chromRed[i] = 255;
         } else if (castedRed < 0) {
-            redChannel[i] = 0;
+            chromRed[i] = 0;
         } else {
-            redChannel[i] = castedRed;
+            chromRed[i] = castedRed;
         }
 
         if (castedGreen > 255) {
-            greenChannel[i] = 255;
+            chromYel[i] = 255;
         } else if (castedGreen < 0) {
-            greenChannel[i] = 0;
+            chromYel[i] = 0;
         } else {
-            greenChannel[i] = castedGreen;
+            chromYel[i] = castedGreen;
         }
 
         if (castedBlue > 255) {
-            blueChannel[i] = 255;
+            luminous[i] = 255;
         } else if (castedBlue < 0) {
-            blueChannel[i] = 0;
+            luminous[i] = 0;
         } else {
-            blueChannel[i] = castedBlue;
+            luminous[i] = castedBlue;
         }
     }
 }
@@ -275,25 +275,22 @@ void JPEGParser::decode() {
 
     this->channels = new ImageChannels(this->height * this->width);
 
-    int *d_Y, *d_Cr, *d_Cb, *red, *green, *blue;
+    int *d_Y, *d_Cr, *d_Cb;
     size_t channelSize = width * height * sizeof(int);
     cudaMalloc((void**)&d_Y, channelSize);
     cudaMalloc((void**)&d_Cr, channelSize);
     cudaMalloc((void**)&d_Cb, channelSize);
-    cudaMalloc((void**)&red, channelSize);
-    cudaMalloc((void**)&green, channelSize);
-    cudaMalloc((void**)&blue, channelSize);
 
     writeToChannelsCUDA( d_Y, d_Cr, d_Cb, this->width, this->height, xBlocks, yBlocks, luminous, chromYel, chromRed);
 
     // Convert YCbCr channels to RGB
     dim3 blockSize(16, 16);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
-    colorConversionKernel<<<gridSize, blockSize>>>(d_Y, d_Cr, d_Cb, red, green, blue, width, height);
+    colorConversionKernel<<<gridSize, blockSize>>>(d_Y, d_Cr, d_Cb, width, height);
 
-    cudaMemcpy(channels->getR().data(), red, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getG().data(), green, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getB().data(), blue, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getR().data(), d_Cr, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getG().data(), d_Cb, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getB().data(), d_Y, channelSize, cudaMemcpyDeviceToHost);
 }
 
 
