@@ -31,14 +31,18 @@ void writeToChannelsCUDA(
         d_Y, d_Cr, d_Cb, d_luminous, d_chromYel, d_chromRed, width, height, xBlocks, yBlocks);
 }
 
-__global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int width, int height) {
+__global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int width, int height, int xBlocks, int yBlocks) {
     int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
     int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
     int i = y * width + x;
+
     if (x < width && y < height) {
-        float red = chromRed[i] * (2 - 2 * 0.299) + luminous[i];
-        float blue = chromYel[i] * (2 - 2 * 0.114) + luminous[i];
-        float green = (luminous[i] - 0.114 * blue - 0.299 * red) / 0.587;
+        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
+        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
+
+        float red = chromRed[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + luminous[blockIndex * 64 + pixelIndexInBlock];
+        float blue = chromYel[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + luminous[blockIndex * 64 + pixelIndexInBlock];
+        float green = (luminous[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
 
         int castedRed = static_cast<int>(red + 128);
         int castedGreen = static_cast<int>(green + 128);
@@ -275,22 +279,15 @@ void JPEGParser::decode() {
 
     this->channels = new ImageChannels(this->height * this->width);
 
-    int *d_Y, *d_Cr, *d_Cb;
-    size_t channelSize = width * height * sizeof(int);
-    cudaMalloc((void**)&d_Y, channelSize);
-    cudaMalloc((void**)&d_Cr, channelSize);
-    cudaMalloc((void**)&d_Cb, channelSize);
-
-    writeToChannelsCUDA( d_Y, d_Cr, d_Cb, this->width, this->height, xBlocks, yBlocks, luminous, chromYel, chromRed);
-
     // Convert YCbCr channels to RGB
-    dim3 blockSize(16, 16);
+    dim3 blockSize(8, 8);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
-    colorConversionKernel<<<gridSize, blockSize>>>(d_Y, d_Cr, d_Cb, width, height);
+    size_t channelSize = width * height * sizeof(int);
+    colorConversionKernel<<<gridSize, blockSize>>>(luminous, chromYel, chromRed, width, height, xBlocks, yBlocks);
 
-    cudaMemcpy(channels->getR().data(), d_Cr, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getG().data(), d_Cb, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getB().data(), d_Y, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getR().data(), chromYel, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getG().data(), chromRed, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getB().data(), luminous, channelSize, cudaMemcpyDeviceToHost);
 }
 
 
