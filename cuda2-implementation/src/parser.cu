@@ -25,9 +25,6 @@ void writeToChannelsCUDA(
     int width, int height, int xBlocks, int yBlocks,
     int* d_luminous, int* d_chromYel, int* d_chromRed) {
 
-    int totalPixels = width * height;
-    size_t channelSize = totalPixels * sizeof(int);
-
     dim3 blockSize(8, 8);
     dim3 gridSize(xBlocks, yBlocks);
     writeToChannelsKernel<<<gridSize, blockSize>>>(
@@ -93,6 +90,22 @@ JPEGParser::JPEGParser(std::string& imagePath): quantTables(2) {
     this->readBytes = bytes;
     input.close();
     
+
+    int zigzagEntries[64] = {
+        0, 1, 5, 6, 14, 15, 27, 28,
+        2, 4, 7, 13, 16, 26, 29, 42,
+        3, 8, 12, 17, 25, 30, 41, 43,
+        9, 11, 18, 24, 31, 40, 44, 53,
+        10, 19, 23, 32, 39, 45, 52, 54,
+        20, 22, 33, 38, 46, 51, 55, 60,
+        21, 34, 37, 47, 50, 56, 59, 61,
+        35, 36, 48, 49, 57, 58, 62, 63
+    };
+
+    cudaMalloc((void**)&initialZigzag, 64 * sizeof(int));
+    cudaMalloc((void**)&zigzag, 64 * sizeof(int));
+    cudaMemcpy(initialZigzag, zigzagEntries, 64 * sizeof(int), cudaMemcpyHostToDevice);
+
     quantTables[0] = new uint8_t[64];
     quantTables[1] = new uint8_t[64];
 
@@ -210,7 +223,7 @@ void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int&
 
     // Create and process the IDCT for this block with the valid dimensions
     cudaMemcpy(arr, hostBuffer.data(), 64*sizeof(int), cudaMemcpyHostToDevice);
-    IDCT* idct = new IDCT(arr, idctTable);
+    IDCT* idct = new IDCT(arr, idctTable, zigzag, initialZigzag);
     idct->rearrangeUsingZigzag(validWidth, validHeight);
     idct->performIDCT(validWidth, validHeight);
 

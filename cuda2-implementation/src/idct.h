@@ -12,11 +12,12 @@ const int IDCT_PRECISION = 8;
 class IDCT {
     private:
         int* zigzag;
+        int* initialZigzag;
         int blockSize;
         int gridSize;
 
     public:
-        IDCT(int* base, double* idctTable);
+        IDCT(int* base, double* idctTable, int* zigzag, int* initialZigzag);
         double* idctTable;
         int* base;
         
