@@ -7,7 +7,7 @@ __global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYe
     int i = y * width + x;
 
     if (x < width && y < height) {
-        int blockIndex = (y / blockDim.y) * xBlocks + (x / blockDim.x); // Index of the current 8x8 block
+        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
         int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
 
         float red = chromRed[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + luminous[blockIndex * 64 + pixelIndexInBlock];
@@ -250,7 +250,7 @@ void JPEGParser::decode() {
     this->channels = new ImageChannels(this->height * this->width);
 
     // Convert YCbCr channels to RGB
-    dim3 blockSize(16, 16);
+    dim3 blockSize(8, 8);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
     size_t channelSize = width * height * sizeof(int);
     colorConversionKernel<<<gridSize, blockSize>>>(luminous, chromYel, chromRed, width, height, xBlocks, yBlocks);
