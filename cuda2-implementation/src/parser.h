@@ -60,6 +60,9 @@ class JPEGParser {
         int width;
 
         double* idctTable;
+        int* initialZigzag;
+        int* zigzag;
+
         // Methods for extracting and building blocks.
         void buildMCU(int* arr, Stream* imageStream, int hf, int quant, int& oldcoeff, int validWidth, int validHeight);
     public:

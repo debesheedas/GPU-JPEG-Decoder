@@ -1,74 +1,45 @@
 #include "parser.h"
 #include <cuda_runtime.h>
 
-__global__ void writeToChannelsKernel(
-    int* d_Y, int* d_Cr, int* d_Cb,
-    const int* d_luminous, const int* d_chromYel, const int* d_chromRed,
-    int width, int height, int xBlocks, int yBlocks) {
-
-    int x = blockIdx.x * 8 + threadIdx.x;  // equal to pixelX, pixelY
-    int y = blockIdx.y * 8 + threadIdx.y; 
-
-    if (x < width && y < height) {
-        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
-        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
-        int pixelIndex = y * width + x;
-
-        d_Y[pixelIndex] = d_luminous[blockIndex * 64 + pixelIndexInBlock];
-        d_Cr[pixelIndex] = d_chromYel[blockIndex * 64 + pixelIndexInBlock];
-        d_Cb[pixelIndex] = d_chromRed[blockIndex * 64 + pixelIndexInBlock];
-    }
-}
-
-void writeToChannelsCUDA(
-    int* d_Y, int* d_Cr, int* d_Cb,
-    int width, int height, int xBlocks, int yBlocks,
-    int* d_luminous, int* d_chromYel, int* d_chromRed) {
-
-    int totalPixels = width * height;
-    size_t channelSize = totalPixels * sizeof(int);
-
-    dim3 blockSize(8, 8);
-    dim3 gridSize(xBlocks, yBlocks);
-    writeToChannelsKernel<<<gridSize, blockSize>>>(
-        d_Y, d_Cr, d_Cb, d_luminous, d_chromYel, d_chromRed, width, height, xBlocks, yBlocks);
-}
-
-__global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int* redChannel, int* greenChannel, int* blueChannel, int width, int height) {
+__global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int width, int height, int xBlocks, int yBlocks) {
     int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
     int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
     int i = y * width + x;
+
     if (x < width && y < height) {
-        float red = chromRed[i] * (2 - 2 * 0.299) + luminous[i];
-        float blue = chromYel[i] * (2 - 2 * 0.114) + luminous[i];
-        float green = (luminous[i] - 0.114 * blue - 0.299 * red) / 0.587;
+        int blockIndex = (y / blockDim.y) * xBlocks + (x / blockDim.x); // Index of the current 8x8 block
+        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
+
+        float red = chromRed[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + luminous[blockIndex * 64 + pixelIndexInBlock];
+        float blue = chromYel[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + luminous[blockIndex * 64 + pixelIndexInBlock];
+        float green = (luminous[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
 
         int castedRed = static_cast<int>(red + 128);
         int castedGreen = static_cast<int>(green + 128);
         int castedBlue = static_cast<int>(blue + 128);
 
         if (castedRed > 255) {
-            redChannel[i] = 255;
+            chromRed[i] = 255;
         } else if (castedRed < 0) {
-            redChannel[i] = 0;
+            chromRed[i] = 0;
         } else {
-            redChannel[i] = castedRed;
+            chromRed[i] = castedRed;
         }
 
         if (castedGreen > 255) {
-            greenChannel[i] = 255;
+            chromYel[i] = 255;
         } else if (castedGreen < 0) {
-            greenChannel[i] = 0;
+            chromYel[i] = 0;
         } else {
-            greenChannel[i] = castedGreen;
+            chromYel[i] = castedGreen;
         }
 
         if (castedBlue > 255) {
-            blueChannel[i] = 255;
+            luminous[i] = 255;
         } else if (castedBlue < 0) {
-            blueChannel[i] = 0;
+            luminous[i] = 0;
         } else {
-            blueChannel[i] = castedBlue;
+            luminous[i] = castedBlue;
         }
     }
 }
@@ -93,6 +64,22 @@ JPEGParser::JPEGParser(std::string& imagePath): quantTables(2) {
     this->readBytes = bytes;
     input.close();
     
+
+    int zigzagEntries[64] = {
+        0, 1, 5, 6, 14, 15, 27, 28,
+        2, 4, 7, 13, 16, 26, 29, 42,
+        3, 8, 12, 17, 25, 30, 41, 43,
+        9, 11, 18, 24, 31, 40, 44, 53,
+        10, 19, 23, 32, 39, 45, 52, 54,
+        20, 22, 33, 38, 46, 51, 55, 60,
+        21, 34, 37, 47, 50, 56, 59, 61,
+        35, 36, 48, 49, 57, 58, 62, 63
+    };
+
+    cudaMalloc((void**)&initialZigzag, 64 * sizeof(int));
+    cudaMalloc((void**)&zigzag, 64 * sizeof(int));
+    cudaMemcpy(initialZigzag, zigzagEntries, 64 * sizeof(int), cudaMemcpyHostToDevice);
+
     quantTables[0] = new uint8_t[64];
     quantTables[1] = new uint8_t[64];
 
@@ -210,7 +197,7 @@ void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int&
 
     // Create and process the IDCT for this block with the valid dimensions
     cudaMemcpy(arr, hostBuffer.data(), 64*sizeof(int), cudaMemcpyHostToDevice);
-    IDCT* idct = new IDCT(arr, idctTable);
+    IDCT* idct = new IDCT(arr, idctTable, zigzag, initialZigzag);
     idct->rearrangeUsingZigzag(validWidth, validHeight);
     idct->performIDCT(validWidth, validHeight);
 
@@ -262,25 +249,15 @@ void JPEGParser::decode() {
 
     this->channels = new ImageChannels(this->height * this->width);
 
-    int *d_Y, *d_Cr, *d_Cb, *red, *green, *blue;
-    size_t channelSize = width * height * sizeof(int);
-    cudaMalloc((void**)&d_Y, channelSize);
-    cudaMalloc((void**)&d_Cr, channelSize);
-    cudaMalloc((void**)&d_Cb, channelSize);
-    cudaMalloc((void**)&red, channelSize);
-    cudaMalloc((void**)&green, channelSize);
-    cudaMalloc((void**)&blue, channelSize);
-
-    writeToChannelsCUDA( d_Y, d_Cr, d_Cb, this->width, this->height, xBlocks, yBlocks, luminous, chromYel, chromRed);
-
     // Convert YCbCr channels to RGB
     dim3 blockSize(16, 16);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
-    colorConversionKernel<<<gridSize, blockSize>>>(d_Y, d_Cr, d_Cb, red, green, blue, width, height);
+    size_t channelSize = width * height * sizeof(int);
+    colorConversionKernel<<<gridSize, blockSize>>>(luminous, chromYel, chromRed, width, height, xBlocks, yBlocks);
 
-    cudaMemcpy(channels->getR().data(), red, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getG().data(), green, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getB().data(), blue, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getR().data(), chromYel, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getG().data(), chromRed, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getB().data(), luminous, channelSize, cudaMemcpyDeviceToHost);
 }
 
 
