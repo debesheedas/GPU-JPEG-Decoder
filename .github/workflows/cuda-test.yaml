@@ -29,6 +29,7 @@ jobs:
       - name: Build Project
         run: |
           cd ./cuda1-implementation
+          rm -f decoder
           make
           cd ..
       
