@@ -11,8 +11,8 @@ on:
       - 'autotest'
 
 jobs:
-  build-cpp:
-    runs-on: ubuntu-20.04
+  build-cuda:
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
@@ -23,12 +23,12 @@ jobs:
           sudo apt-get install -y build-essential  
 
       - name: Set up CUDA environment
-      run: |
-        # Add NVIDIA package repository to get CUDA
-        sudo apt-get update
-        sudo apt-get install -y nvidia-cuda-toolkit
-        # Optionally install other dependencies, such as cuDNN if necessary
-        # sudo apt-get install -y libcudnn8 libcudnn8-dev
+        run: |
+          # Add NVIDIA package repository to get CUDA
+          sudo apt-get update
+          sudo apt-get install -y nvidia-cuda-toolkit
+          # Optionally install other dependencies, such as cuDNN if necessary
+          # sudo apt-get install -y libcudnn8 libcudnn8-dev
 
       - name: Build Project
         run: |
