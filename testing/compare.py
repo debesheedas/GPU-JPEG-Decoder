@@ -31,6 +31,7 @@ def test_array_equality(implementation_folder, image_path):
         return True
     else:
         differences = [(i, ground_truth[1][i], decoder_output[1][i]) for i in range(len(ground_truth[1])) if ground_truth[1][i] != decoder_output[1][i]]
+        print("::error Test failed at image: "+image_name)
         print(differences)        
         print("Output does not match the ground truth!", image_name)
     return False
@@ -49,6 +50,7 @@ if __name__ == '__main__':
             if os.path.isfile(image_path):
                 results.append(test_array_equality(implementation_folder, image_path))
         if all(results):
+            print("::notice ::All tests passed!")
             print("All test cases passed!") 
         else:
             print(f'{results.count(False)} test cases failed')
