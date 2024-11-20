@@ -54,6 +54,7 @@ if __name__ == '__main__':
             print("All test cases passed!") 
         else:
             print(f'{results.count(False)} test cases failed')
+            sys.exit(1)
     elif num_args == 2:
         implementation_folder = sys.argv[1]
         image_path = sys.argv[2]
