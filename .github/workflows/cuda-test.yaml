@@ -21,7 +21,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential  
-          sudo apt-get install -y g++-11
+          sudo apt-get install -y g++-10
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 10
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 10
           sudo apt-get install -y nvidia-cuda-toolkit
           nvcc --version
           g++ --version
