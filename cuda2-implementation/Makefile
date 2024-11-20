@@ -4,10 +4,8 @@ NVCCFLAGS = --fmad=false --prec-div=true --prec-sqrt=true
 
 # Compiler for C++ code
 CXX = g++
-CXXFLAGS = -std=c++17 -I/usr/local/cuda/include  # Add CUDA include path
-
-# CUDA library path
-LDFLAGS = -L/usr/local/cuda/lib64
+CXXFLAGS = -std=c++17 -I/usr/local/cuda/include
+LDFLAGS = -L/usr/local/cuda/lib64 -lstdc++fs  # Link stdc++fs library for filesystem support
 
 # Sources
 CU_SOURCES = src/parser.cu src/idct.cu
@@ -29,7 +27,7 @@ $(TARGET): $(OBJECTS)
 
 # Compile C++ files (.cpp)
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -c $< -o $@
 
 # Clean target
 clean:
