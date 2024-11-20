@@ -28,7 +28,7 @@ jobs:
       - name: Build Project
         run: |
           cd ./cuda2-implementation
-          make decoder-online
+          make
           cd ..
       
       - name: Set up Python
