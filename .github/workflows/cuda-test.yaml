@@ -17,18 +17,33 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v3
 
-      - name: Set up CUDA and cpp environment
+      - name: Install NVIDIA CUDA Toolkit 11.7
         run: |
-          sudo apt-get update 
-          sudo apt-get install -y g++-11
+          # Add NVIDIA package repository
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
+          sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+          wget https://developer.download.nvidia.com/compute/cuda/11.7.1/local_installers/cuda-repo-ubuntu2004-11-7-local_11.7.1-515.65.01-1_amd64.deb
+          sudo dpkg -i cuda-repo-ubuntu2004-11-7-local_11.7.1-515.65.01-1_amd64.deb
+          sudo cp /var/cuda-repo-ubuntu2004-11-7-local/cuda-*-keyring.gpg /usr/share/keyrings/
+          sudo apt-get update
+          sudo apt-get -y install cuda
+
+          # Verify CUDA installation
+          nvidia-smi
+          nvcc --version
+
+      - name: Install g++-11
+        run: |
+          sudo apt update
+          sudo apt install -y g++-11
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
-          sudo apt-get install -y nvidia-cuda-toolkit
+          g++ --version
           nvcc --version
           g++ --version
 
       - name: Build Project
         run: |
-          cd ./cuda1-implementation
+          cd ./cuda2-implementation
           make
           cd ..
       
@@ -40,7 +55,7 @@ jobs:
       - name: Run Python Tests
         run: |
           cd ./testing
-          python3 compare.py  ../cuda1-implementation 
+          python3 compare.py  ../cuda2-implementation 
           cd ..
 
 
