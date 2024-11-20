@@ -28,7 +28,7 @@ jobs:
 
       - name: Build Project
         run: |
-          cd ./cuda2-implementation
+          cd ./cuda1-implementation
           make
           cd ..
       
@@ -40,7 +40,7 @@ jobs:
       - name: Run Python Tests
         run: |
           cd ./testing
-          python3 compare.py  ../cuda2-implementation 
+          python3 compare.py  ../cuda1-implementation 
           cd ..
 
 
