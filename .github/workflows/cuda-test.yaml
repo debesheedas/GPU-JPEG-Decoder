@@ -12,17 +12,16 @@ on:
 
 jobs:
   build-cuda:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
 
       - name: Set up CUDA and cpp environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential  
+          sudo apt-get update 
           sudo apt-get install -y g++-11
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
           sudo apt-get install -y nvidia-cuda-toolkit
           nvcc --version
           g++ --version
