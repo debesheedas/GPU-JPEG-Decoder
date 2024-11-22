@@ -202,7 +202,13 @@ void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int&
     oldCoeff = dcCoeff;
 }
 
-__global__ void performIDCTKernel(int* arr_l, int* out_l, int* zigzag_l, int* arr_r, int* out_r, int* zigzag_r, int* arr_y, int* out_y, int* zigzag_y, double* idctTable, int* initialZigzag, int validHeight, int validWidth) {
+__global__ void performIDCTKernel(int* arr_l, int* out_l, int* arr_r, int* out_r, int* arr_y, int* out_y, double* idctTable, int* initialZigzag, int validHeight, int validWidth) {
+    // Shared memory for zigzag arrays
+    __shared__ int sharedZigzag[3 * 64];
+    int* zigzag_l = &sharedZigzag[0];
+    int* zigzag_r = &sharedZigzag[64];
+    int* zigzag_y = &sharedZigzag[128];
+    
     int blockStart = blockIdx.x * 64;
 
     // Identify the thread's position in the 8x8 grid
@@ -214,13 +220,13 @@ __global__ void performIDCTKernel(int* arr_l, int* out_l, int* zigzag_l, int* ar
     int globalIndex = blockStart + threadIndexInBlock;
 
     if (threadCol < validWidth && threadRow < validHeight) {
-        zigzag_l[globalIndex] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_r[globalIndex] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_y[globalIndex] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
+        zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
+        zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
+        zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
     } else {
-        zigzag_l[globalIndex] = 0;
-        zigzag_r[globalIndex] = 0;
-        zigzag_y[globalIndex] = 0;
+        zigzag_l[threadIndexInBlock] = 0;
+        zigzag_r[threadIndexInBlock] = 0;
+        zigzag_y[threadIndexInBlock] = 0;
     }
 
     __syncthreads();
@@ -231,9 +237,9 @@ __global__ void performIDCTKernel(int* arr_l, int* out_l, int* zigzag_l, int* ar
         double localSum_y = 0.0;
         for (int u = 0; u < 8; u++) {
             for (int v = 0; v < 8; v++) {
-                localSum_l += zigzag_l[blockStart + v*8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_r += zigzag_r[blockStart + v*8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_y += zigzag_y[blockStart + v*8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_l += zigzag_l[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_r += zigzag_r[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_y += zigzag_y[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
             }
         }
 
@@ -259,16 +265,13 @@ void JPEGParser::decode() {
     Stream* imageStream = new Stream(this->imageData);
 
     // Allocating the channels in the GPU memory.
-    int *luminous, *chromRed, *chromYel, *luminous2, *chromRed2, *chromYel2, *luminous3, *chromRed3, *chromYel3;
+    int *luminous, *chromRed, *chromYel, *luminous2, *chromRed2, *chromYel2;
     cudaMalloc((void**)&luminous, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromRed, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromYel, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&luminous2, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromRed2, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromYel2, 64 * xBlocks * yBlocks * sizeof(int));
-    cudaMalloc((void**)&luminous3, 64 * xBlocks * yBlocks * sizeof(int));
-    cudaMalloc((void**)&chromRed3, 64 * xBlocks * yBlocks * sizeof(int));
-    cudaMalloc((void**)&chromYel3, 64 * xBlocks * yBlocks * sizeof(int));
 
     int *curLuminous = luminous;
     int *curChromRed = chromRed;
@@ -292,9 +295,7 @@ void JPEGParser::decode() {
     int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
     dim3 threadsPerBlock(8, 8);
 
-    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, luminous2, luminous3, chromRed, chromRed2, chromRed3, chromYel, chromYel2, chromYel3, idctTable, initialZigzag, 8, 8);
-    // performIDCTKernel<<<numBlocks, threadsPerBlock>>>(chromRed, chromRed2, chromRed3, idctTable, initialZigzag, 8, 8);
-    // performIDCTKernel<<<numBlocks, threadsPerBlock>>>(chromYel, chromYel2, chromYel3, idctTable, initialZigzag, 8, 8);
+    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, luminous2, chromRed, chromRed2, chromYel, chromYel2, idctTable, initialZigzag, 8, 8);
 
     this->channels = new ImageChannels(this->height * this->width);
 
