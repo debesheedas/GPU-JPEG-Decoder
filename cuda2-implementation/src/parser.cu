@@ -163,8 +163,7 @@ void JPEGParser::extract() {
     }   
 }
 
-void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int& oldCoeff, int validWidth = 8, int validHeight = 8) {
-    std::vector<int> hostBuffer(64,0);
+void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quant, int& oldCoeff, int validWidth = 8, int validHeight = 8) {
     uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
     uint16_t bits = imageStream->getNBits(code);
     int decoded = Stream::decodeNumber(code, bits);
@@ -194,9 +193,6 @@ void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int&
             length++;
         }
     }
-
-    // Create and process the IDCT for this block with the valid dimensions
-    cudaMemcpy(arr, hostBuffer.data(), 64*sizeof(int), cudaMemcpyHostToDevice);
 
     // Update oldCoeff for the next MCU
     oldCoeff = dcCoeff;
@@ -270,9 +266,13 @@ void JPEGParser::decode() {
     cudaMalloc((void**)&chromRed, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromYel, 64 * xBlocks * yBlocks * sizeof(int));
 
-    int *curLuminous = luminous;
-    int *curChromRed = chromRed;
-    int *curChromYel = chromYel;
+    int* hostBuffer_l = new int[64 * xBlocks * yBlocks * sizeof(int)];
+    int* hostBuffer_y = new int[64 * xBlocks * yBlocks * sizeof(int)];
+    int* hostBuffer_r = new int[64 * xBlocks * yBlocks * sizeof(int)];
+
+    int *curLuminous = hostBuffer_l;
+    int *curChromRed = hostBuffer_r;
+    int *curChromYel = hostBuffer_y;
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
@@ -288,6 +288,10 @@ void JPEGParser::decode() {
             curChromYel += 64;
         }
     }
+
+    cudaMemcpy(luminous, hostBuffer_l, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(chromRed, hostBuffer_r, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(chromYel, hostBuffer_y, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
 
     int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
     dim3 threadsPerBlock(8, 8);
@@ -310,8 +314,6 @@ void JPEGParser::decode() {
     if (chromRed) cudaFree(chromRed);
     if (chromYel) cudaFree(chromYel);
 }
-
-
 
 void JPEGParser::write() {
     // Writing the decoded channels to a file instead of displaying using opencv
