@@ -1,5 +1,6 @@
 #include "parser.h"
-#include <cuda_runtime.h>
+
+__constant__ int initialZigzag[64]; 
 
 __global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int width, int height, int xBlocks, int yBlocks) {
     int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
@@ -63,7 +64,7 @@ JPEGParser::JPEGParser(std::string& imagePath): quantTables(2) {
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
     this->readBytes = bytes;
     input.close();
-    
+
 
     int zigzagEntries[64] = {
         0, 1, 5, 6, 14, 15, 27, 28,
@@ -76,9 +77,8 @@ JPEGParser::JPEGParser(std::string& imagePath): quantTables(2) {
         35, 36, 48, 49, 57, 58, 62, 63
     };
 
-    cudaMalloc((void**)&initialZigzag, 64 * sizeof(int));
     cudaMalloc((void**)&zigzag, 64 * sizeof(int));
-    cudaMemcpy(initialZigzag, zigzagEntries, 64 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpyToSymbol(initialZigzag, zigzagEntries, sizeof(int) * 64);
 
     quantTables[0] = new uint8_t[64];
     quantTables[1] = new uint8_t[64];
@@ -198,7 +198,7 @@ void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quan
     oldCoeff = dcCoeff;
 }
 
-__global__ void performIDCTKernel(int* arr_l, int* arr_r, int* arr_y, double* idctTable, int* initialZigzag, int validHeight, int validWidth) {
+__global__ void performIDCTKernel(int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, int validWidth) {
     // Shared memory for zigzag arrays
     __shared__ int sharedZigzag[3 * 64];
     int* zigzag_l = &sharedZigzag[0];
@@ -296,7 +296,7 @@ void JPEGParser::decode() {
     int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
     dim3 threadsPerBlock(8, 8);
 
-    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, chromRed, chromYel, idctTable, initialZigzag, 8, 8);
+    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, chromRed, chromYel, idctTable, 8, 8);
 
     this->channels = new ImageChannels(this->height * this->width);
 

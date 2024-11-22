@@ -9,6 +9,7 @@
 #include "../utils/color.h"
 #include "idct.h"
 #include "huffmanTree.h"
+#include <cuda_runtime.h>
 
 #ifdef __APPLE__
     // #include <filesystem>
@@ -38,7 +39,6 @@ struct ImageChannels {
     std::vector<int>& getB() { return channels[5]; }
 };
 
-
 class JPEGParser {
     private:
         // Parts of the jpeg file.
@@ -60,7 +60,6 @@ class JPEGParser {
         int width;
 
         double* idctTable;
-        int* initialZigzag;
         int* zigzag;
 
         // Methods for extracting and building blocks.
