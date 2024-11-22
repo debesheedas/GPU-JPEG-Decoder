@@ -202,7 +202,7 @@ void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int&
     oldCoeff = dcCoeff;
 }
 
-__global__ void performIDCTKernel(int* arr_l, int* out_l, int* arr_r, int* out_r, int* arr_y, int* out_y, double* idctTable, int* initialZigzag, int validHeight, int validWidth) {
+__global__ void performIDCTKernel(int* arr_l, int* arr_r, int* arr_y, double* idctTable, int* initialZigzag, int validHeight, int validWidth) {
     // Shared memory for zigzag arrays
     __shared__ int sharedZigzag[3 * 64];
     int* zigzag_l = &sharedZigzag[0];
@@ -243,9 +243,9 @@ __global__ void performIDCTKernel(int* arr_l, int* out_l, int* arr_r, int* out_r
             }
         }
 
-        out_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0));
-        out_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0));
-        out_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0));
+        arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0));
+        arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0));
+        arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0));
     }
 }
 
@@ -265,13 +265,10 @@ void JPEGParser::decode() {
     Stream* imageStream = new Stream(this->imageData);
 
     // Allocating the channels in the GPU memory.
-    int *luminous, *chromRed, *chromYel, *luminous2, *chromRed2, *chromYel2;
+    int *luminous, *chromRed, *chromYel;
     cudaMalloc((void**)&luminous, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromRed, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromYel, 64 * xBlocks * yBlocks * sizeof(int));
-    cudaMalloc((void**)&luminous2, 64 * xBlocks * yBlocks * sizeof(int));
-    cudaMalloc((void**)&chromRed2, 64 * xBlocks * yBlocks * sizeof(int));
-    cudaMalloc((void**)&chromYel2, 64 * xBlocks * yBlocks * sizeof(int));
 
     int *curLuminous = luminous;
     int *curChromRed = chromRed;
@@ -295,7 +292,7 @@ void JPEGParser::decode() {
     int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
     dim3 threadsPerBlock(8, 8);
 
-    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, luminous2, chromRed, chromRed2, chromYel, chromYel2, idctTable, initialZigzag, 8, 8);
+    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, chromRed, chromYel, idctTable, initialZigzag, 8, 8);
 
     this->channels = new ImageChannels(this->height * this->width);
 
@@ -303,11 +300,15 @@ void JPEGParser::decode() {
     dim3 blockSize(8, 8);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
     size_t channelSize = width * height * sizeof(int);
-    colorConversionKernel<<<gridSize, blockSize>>>(luminous2, chromYel2, chromRed2, width, height, xBlocks, yBlocks);
+    colorConversionKernel<<<gridSize, blockSize>>>(luminous, chromYel, chromRed, width, height, xBlocks, yBlocks);
 
-    cudaMemcpy(channels->getR().data(), chromYel2, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getG().data(), chromRed2, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getB().data(), luminous2, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getR().data(), chromYel, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getG().data(), chromRed, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getB().data(), luminous, channelSize, cudaMemcpyDeviceToHost);
+
+    if (luminous) cudaFree(luminous);
+    if (chromRed) cudaFree(chromRed);
+    if (chromYel) cudaFree(chromYel);
 }
 
 
