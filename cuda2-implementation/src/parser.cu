@@ -197,17 +197,12 @@ void JPEGParser::buildMCU(int* arr, Stream* imageStream, int hf, int quant, int&
 
     // Create and process the IDCT for this block with the valid dimensions
     cudaMemcpy(arr, hostBuffer.data(), 64*sizeof(int), cudaMemcpyHostToDevice);
-    //IDCT* idct = new IDCT(arr, idctTable, zigzag, initialZigzag);
-    //idct->rearrangeUsingZigzag(validWidth, validHeight);
-    //idct->performIDCT(validWidth, validHeight);
 
     // Update oldCoeff for the next MCU
     oldCoeff = dcCoeff;
-
-    //delete idct;
 }
 
-__global__ void performIDCTKernel(int* arr, int* out, int* zigzag, double* idctTable, int* initialZigzag, int validHeight, int validWidth) {
+__global__ void performIDCTKernel(int* arr_l, int* out_l, int* zigzag_l, int* arr_r, int* out_r, int* zigzag_r, int* arr_y, int* out_y, int* zigzag_y, double* idctTable, int* initialZigzag, int validHeight, int validWidth) {
     int blockStart = blockIdx.x * 64;
 
     // Identify the thread's position in the 8x8 grid
@@ -219,22 +214,32 @@ __global__ void performIDCTKernel(int* arr, int* out, int* zigzag, double* idctT
     int globalIndex = blockStart + threadIndexInBlock;
 
     if (threadCol < validWidth && threadRow < validHeight) {
-        zigzag[globalIndex] = arr[blockStart + initialZigzag[threadIndexInBlock]];
+        zigzag_l[globalIndex] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
+        zigzag_r[globalIndex] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
+        zigzag_y[globalIndex] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
     } else {
-        zigzag[globalIndex] = 0;
+        zigzag_l[globalIndex] = 0;
+        zigzag_r[globalIndex] = 0;
+        zigzag_y[globalIndex] = 0;
     }
 
     __syncthreads();
 
     if (threadCol < validWidth && threadRow < validHeight) {
-        double localSum = 0.0;
+        double localSum_l = 0.0;
+        double localSum_r = 0.0;
+        double localSum_y = 0.0;
         for (int u = 0; u < 8; u++) {
             for (int v = 0; v < 8; v++) {
-                localSum += zigzag[blockStart + v*8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_l += zigzag_l[blockStart + v*8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_r += zigzag_r[blockStart + v*8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_y += zigzag_y[blockStart + v*8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
             }
         }
 
-        out[globalIndex] = static_cast<int>(std::floor(localSum / 4.0));
+        out_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0));
+        out_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0));
+        out_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0));
     }
 }
 
@@ -287,9 +292,9 @@ void JPEGParser::decode() {
     int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
     dim3 threadsPerBlock(8, 8);
 
-    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, luminous2, luminous3, idctTable, initialZigzag, 8, 8);
-    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(chromRed, chromRed2, chromRed3, idctTable, initialZigzag, 8, 8);
-    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(chromYel, chromYel2, chromYel3, idctTable, initialZigzag, 8, 8);
+    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, luminous2, luminous3, chromRed, chromRed2, chromRed3, chromYel, chromYel2, chromYel3, idctTable, initialZigzag, 8, 8);
+    // performIDCTKernel<<<numBlocks, threadsPerBlock>>>(chromRed, chromRed2, chromRed3, idctTable, initialZigzag, 8, 8);
+    // performIDCTKernel<<<numBlocks, threadsPerBlock>>>(chromYel, chromYel2, chromYel3, idctTable, initialZigzag, 8, 8);
 
     this->channels = new ImageChannels(this->height * this->width);
 
