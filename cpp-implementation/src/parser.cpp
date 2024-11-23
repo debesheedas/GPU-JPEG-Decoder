@@ -11,6 +11,16 @@ JPEGParser::JPEGParser(std::string& imagePath){
     // JPEGParser::extract(bytes);
 }
 
+JPEGParser::~JPEGParser() {
+    if (this->channels) {
+        delete this->channels;
+    }
+
+    for (auto& pair : this->huffmanTrees) {
+        delete pair.second;
+    }
+}
+
 void JPEGParser::extract() {        
     uint16_t tableSize = 0;
     uint8_t header = 0;
@@ -47,6 +57,7 @@ void JPEGParser::extract() {
             int precision = frame->getByte();
             this->height = frame->getMarker();
             this->width = frame->getMarker();
+            delete frame;
         } else if (marker == MARKERS[4]) {
             // std::cout<< "Extracting Huffman Tables" << std::endl;
             tableSize = stream->getMarker();
@@ -87,7 +98,8 @@ void JPEGParser::extract() {
             imageData.pop_back(); // We remove the ending byte because it is extra 0xff.
             break;
         }
-    }   
+    }
+    delete stream;
 }
 
 void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldCoeff, int validWidth = 8, int validHeight = 8) {
@@ -187,7 +199,7 @@ void JPEGParser::decode() {
 
     // Convert YCbCr channels to RGB
     colorConversion(this->channels->getY(), this->channels->getCr(), this->channels->getCb(), this->channels->getR(), this->channels->getG(), this->channels->getB(), this->height * this->width);
-    
+    delete imageStream;
 }
 
 void JPEGParser::write() {

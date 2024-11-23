@@ -62,6 +62,7 @@ class JPEGParser {
 
     public:
         JPEGParser(std::string& imagePath);
+        ~JPEGParser();
         void extract();
         void decode();
         void write();
