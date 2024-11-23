@@ -12,6 +12,10 @@ HuffmanTree::HuffmanTree(const std::vector<uint8_t>& bytes) {
     this->decodeTree(this->root, "");
 }
 
+HuffmanTree::~HuffmanTree() {
+    clearTree(this->root);
+}
+
 // Creates the nodes for the characters.
 void HuffmanTree::createNodes() {
     // Extracting the length information.
@@ -91,6 +95,14 @@ uint8_t HuffmanTree::traverseTree(HuffmanTreeNode* cur, Stream* st) {
     }
 
     return cur->val;
+}
+
+void HuffmanTree::clearTree(HuffmanTreeNode* node) {
+    if (!node) return;
+
+    clearTree(node->left);
+    clearTree(node->right);
+    delete node;
 }
 
 uint8_t HuffmanTree::getCode(Stream* st) {
