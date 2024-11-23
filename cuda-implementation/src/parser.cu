@@ -122,6 +122,7 @@ void JPEGParser::extract() {
             int precision = frame->getByte();
             this->height = frame->getMarker();
             this->width = frame->getMarker();
+            delete frame;
         } else if (marker == MARKERS[4]) {
             tableSize = stream->getMarker();
             header = stream->getByte();
@@ -160,7 +161,8 @@ void JPEGParser::extract() {
             imageData.pop_back(); // We remove the ending byte because it is extra 0xff.
             break;
         }
-    }   
+    } 
+    delete stream;   
 }
 
 void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quant, int& oldCoeff) {
@@ -196,6 +198,19 @@ void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quan
 
     // Update oldCoeff for the next MCU
     oldCoeff = dcCoeff;
+}
+
+JPEGParser::~JPEGParser() {
+    cudaFree(idctTable);
+
+    delete[] quantTables[0];
+    delete[] quantTables[1];
+
+    delete channels;
+
+    for (auto& tree : huffmanTrees) {
+        delete tree.second;
+    }
 }
 
 __global__ void performIDCTKernel(int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, int validWidth) {
@@ -313,6 +328,8 @@ void JPEGParser::decode() {
     if (luminous) cudaFree(luminous);
     if (chromRed) cudaFree(chromRed);
     if (chromYel) cudaFree(chromYel);
+
+    delete imageStream;
 }
 
 void JPEGParser::write() {
