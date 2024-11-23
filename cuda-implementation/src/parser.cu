@@ -201,6 +201,10 @@ void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quan
 }
 
 JPEGParser::~JPEGParser() {
+    // if (this->channels) {
+    //     delete this->channels;
+    // }
+
     cudaFree(idctTable);
 
     delete[] quantTables[0];
@@ -330,6 +334,9 @@ void JPEGParser::decode() {
     if (chromYel) cudaFree(chromYel);
 
     delete imageStream;
+    delete hostBuffer_l;
+    delete hostBuffer_r;
+    delete hostBuffer_y;
 }
 
 void JPEGParser::write() {
