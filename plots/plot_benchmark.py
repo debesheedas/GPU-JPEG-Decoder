@@ -2,8 +2,9 @@ import os
 import json
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from statistics import mean
 
-versions = ['cpp','cuda', 'cuda1']
+versions = ['cpp','cuda1', 'cuda2']
 
 sizes = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
 
@@ -30,6 +31,15 @@ for version in versions:
     results_json = os.path.join('/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/', version+'-implementation', 'build/benchmark_results.json')
     average_times[version] = readings(results_json)
     print(average_times[version])
+
+speedups = []
+for i in range(len(average_times['cuda1'])):
+    speedups.append(average_times['cpp'][i]/average_times['cuda2'][i])
+print(speedups)
+print(mean(speedups))
+
+print(speedups[-1])
+
 
 # # Function to extract image size from the file path
 # def get_image_size(filename):
