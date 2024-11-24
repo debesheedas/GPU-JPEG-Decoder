@@ -1,0 +1,2 @@
+decoder: main.cpp src/parser.cu src/huffmanTree.cpp src/idct.cpp utils/stream.cpp utils/color.cpp
+	/usr/local/cuda/bin/nvcc --fmad=false --prec-div=true --prec-sqrt=true -o decoder main.cpp src/parser.cu src/huffmanTree.cpp src/idct.cpp utils/stream.cpp utils/color.cpp
