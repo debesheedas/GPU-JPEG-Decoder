@@ -4,9 +4,7 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda1-implementation/src/parser.h"
-#include <cuda_runtime.h>
-#include <nvtx3/nvToolsExt.h>
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/src/parser.h"
 
 namespace fs = std::filesystem;
 
@@ -29,34 +27,17 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
     
     for (auto _ : state) {
-        
-        // Start CUDA timer for GPU-based operations
-        cudaEvent_t start, stop;
-
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-
-        nvtxRangePush("Full");
-
+        // reading of jpeg here
         JPEGParser parser(imagePath);
-
-        cudaEventRecord(start);
-
+        auto start_time = std::chrono::high_resolution_clock::now();
         parser.extract();
         parser.decode();
-        
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        
-        nvtxRangePop();
-
+        auto end_time = std::chrono::high_resolution_clock::now();
         parser.write();
-
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-
-        state.SetIterationTime(milliseconds / 1000.0); // Set iteration time for benchmark
-        resultFile << imagePath << " " << milliseconds << "\n"; // Time in milliseconds
+        // writing of output file here
+        std::chrono::duration<double> decode_duration = end_time - start_time;
+        state.SetIterationTime(decode_duration.count());
+        resultFile << imagePath << " " << decode_duration.count() * 1000 << "\n";  // time in ms
     }
     
     resultFile.close();
