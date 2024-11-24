@@ -9,7 +9,6 @@ int main(int argc, char* argv[]) {
     }
     std::string imagePath = argv[1];
     JPEGParser* parser = new JPEGParser(imagePath);
-    parser->extract();
     parser->decode();
     parser->write();
     return 0;

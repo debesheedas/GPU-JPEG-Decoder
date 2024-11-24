@@ -1,4 +1,22 @@
-LDFLAGS = -L./libjpeg/lib -Wl,-rpath,./libjpeg/lib -ljpeg
+# Compiler
+CXX = g++
 
-decoder: main.cpp src/parser.cpp utils/stream.cpp utils/color.cpp
-	g++ -o decoder main.cpp src/parser.cpp utils/stream.cpp utils/color.cpp -I./libjpeg/include -L./libjpeg/lib -ljpeg
+# Compiler flags
+CXXFLAGS = -Ilibjpeg_install/install/include -Wall -Wextra -O2
+
+# Linker flags
+LDFLAGS = -Llibjpeg_install/install/lib -ljpeg
+
+# Target
+TARGET = decoder
+
+# Source files
+SRC = main.cpp src/parser.cpp utils/stream.cpp utils/color.cpp
+
+# Build target
+$(TARGET): $(SRC)
+	$(CXX) -o $(TARGET) $(SRC) $(CXXFLAGS) $(LDFLAGS)
+
+# Clean target
+clean:
+	rm -f $(TARGET)

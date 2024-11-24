@@ -21,19 +21,13 @@ const std::vector<uint16_t> MARKERS = {0xffd8, 0xffe0, 0xffdb, 0xffc0, 0xffc4, 0
 
 class JPEGParser {
     private:
-        // Parts of the jpeg file.
         std::string filename;
-        std::vector<uint8_t> readBytes;
-        std::vector<uint8_t> startOfFrame;
-        std::vector<uint8_t> imageData;
-
-        // Image features.
-        int height;
-        int width;
+        std::vector<uint8_t> readBytes;      // Raw image data from file
+        std::vector<uint8_t> decompressedData; // Decompressed pixel data
+        int width, height;
 
     public:
         JPEGParser(std::string& imagePath);
-        void extract();
         void decode();
         void write();
 };

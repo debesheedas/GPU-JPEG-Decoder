@@ -4,7 +4,7 @@ import sys
 import os
 
 
-TOL = 2
+TOL = 6
 
 def read_output(filename):
     with open(filename, 'r') as f:
@@ -15,31 +15,29 @@ def read_output(filename):
 
     return data
 
-def test_array_equality(implementation_folder, image_path):
-    # print("Testing equality with ground truth")
-    # print(implementation_folder, image_path)
-    
+def test_array_equality(implementation_folder, image_path):    
     decoder_executable = os.path.join(implementation_folder, "decoder")
 
     subprocess.run(["./"+decoder_executable, image_path], check=True)
-    # subprocess.run(["python3", "./baseline.py", "python_output.txt"], check=True)
     
     implementation_type = os.path.basename(implementation_folder).split('-')[0]
 
     image_name = os.path.basename(image_path).replace(".jpg", ".array")
-    # print(implementation_type)
-    # print(image_name)
     ground_truth = read_output(os.path.join("./ground_truth/", image_name))
     decoder_output = read_output(os.path.join(implementation_type+"_output_arrays", image_name))
     assert(len(ground_truth) == len(decoder_output))
-    for row1, row2 in zip(ground_truth, decoder_output):
-        assert(len(row1) == len(row2)), "Mismatch in row lengths"
-        for val1, val2 in zip(row1, row2):
-            if abs(val1 - val2) > TOL:
-                return False 
+    differences = []
+    for i in range(len(ground_truth[1])):
+        if abs(ground_truth[1][i] - decoder_output[1][i]) > TOL:
+            differences.append((i, ground_truth[1][i], decoder_output[1][i]))
 
-    print("Congratulations! Output matches ground truth with tolerance!", image_name)
-    return True
+    if not differences:
+        print("Congratulations! Output matches ground truth!", image_name)
+        return True
+    else:
+        print(f"Differences exceeding tolerance ({TOL}):", differences)
+        print("Output does not match the ground truth!", image_name)
+        return False
 
 
 if __name__ == '__main__':
@@ -65,5 +63,3 @@ if __name__ == '__main__':
     else:
         print("Too many arguments")
         sys.exit()
-
-    

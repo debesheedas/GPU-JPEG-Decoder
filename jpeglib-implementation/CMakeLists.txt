@@ -4,13 +4,23 @@ project(JPEGDecoder)
 # Enable testing
 enable_testing()
 
-# Add source files for the decoder executable
+# Set the path to the locally installed libjpeg library
+set(LIBJPEG_INCLUDE_DIR "$ENV{HOME}/libjpeg_install/install/include")
+set(LIBJPEG_LIB_DIR "$ENV{HOME}/libjpeg_install/install/lib")
+
+# Add the source files for the decoder executable
 add_executable(decoder
     main.cpp
     src/parser.cpp
     utils/stream.cpp
     utils/color.cpp
 )
+
+# Include the libjpeg headers
+target_include_directories(decoder PRIVATE ${LIBJPEG_INCLUDE_DIR})
+
+# Link the libjpeg library
+target_link_libraries(decoder PRIVATE ${LIBJPEG_LIB_DIR}/libjpeg.so)
 
 # Set the path to the locally installed Google Benchmark library
 set(BENCHMARK_ROOT "$ENV{HOME}/benchmark_install")

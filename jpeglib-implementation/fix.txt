@@ -1,0 +1,4 @@
+If it can't find the library try this:
+export LD_LIBRARY_PATH=/path/to/libjpeg_install/install/lib:$LD_LIBRARY_PATH
+Example:
+export LD_LIBRARY_PATH=/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/jpeglib-implementation/libjpeg_install/install/lib:$LD_LIBRARY_PATH
