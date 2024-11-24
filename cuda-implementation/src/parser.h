@@ -7,6 +7,7 @@
 #include <filesystem>
 
 #include "../utils/color.h"
+#include "idct.h"
 #include "huffmanTree.h"
 #include <cuda_runtime.h>
 
@@ -60,9 +61,6 @@ class JPEGParser {
 
         double* idctTable;
         int* zigzag;
-        int *blockWidths;
-        int *blockHeights;
-
 
         // Methods for extracting and building blocks.
         void buildMCU(int* arr, Stream* imageStream, int hf, int quant, int& oldcoeff);
