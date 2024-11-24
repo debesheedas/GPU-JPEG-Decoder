@@ -10,3 +10,4 @@ image-data.zip
 */build/
 /benchmarking_dataset
 */images/
+*.array
