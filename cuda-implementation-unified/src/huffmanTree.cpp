@@ -1,7 +1,7 @@
 #include "huffmanTree.h"
 
 // Constructor for HuffmanTree
-HuffmanTree::HuffmanTree(const std::vector<uint8_t>& bytes) {
+HuffmanTree::HuffmanTree(uint8_t* bytes) {
     this->bytes = bytes;
     this->createNodes();
     this->root = new HuffmanTreeNode(0,0,false);
@@ -19,7 +19,8 @@ HuffmanTree::~HuffmanTree() {
 // Creates the nodes for the characters.
 void HuffmanTree::createNodes() {
     // Extracting the length information.
-    std::vector<char> lengths(this->bytes.begin(), this->bytes.begin() + 16);
+    char* lengths = new char[16]; 
+    std::memcpy(lengths, bytes, 16);
     int offset = 16;
 
     for (int i = 0; i < 16; i++) {

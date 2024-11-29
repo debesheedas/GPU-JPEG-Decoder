@@ -43,21 +43,24 @@ class JPEGParser {
     private:
         // Parts of the jpeg file.
         std::string filename;
-        std::vector<uint8_t> readBytes;
-        std::vector<uint8_t> applicationHeader;
+        uint8_t* readBytes;
+        uint8_t* applicationHeader;
+        uint8_t* startOfFrame;
+        uint8_t* startOfScan;
+        uint8_t* imageData;
 
-        std::vector<uint8_t*> quantTables;
-
-        std::vector<uint8_t> startOfFrame;
-        std::unordered_map<int,std::vector<uint8_t>> huffmanTables;
+        // Huffman Tables
+        uint8_t *huffmanTable1, *huffmanTable2, *huffmanTable3, *huffmanTable4;
         std::unordered_map<int,HuffmanTree*> huffmanTrees;
-        std::vector<uint8_t> startOfScan;
-        std::vector<uint8_t> imageData;
-        ImageChannels* channels;
 
+        // Quant Tables
+        uint8_t *quantTable1, *quantTable2;
+
+        ImageChannels* channels;
         // Image features.
         int height;
         int width;
+        int imageDataLength;
 
         double* idctTable;
         int* zigzag;

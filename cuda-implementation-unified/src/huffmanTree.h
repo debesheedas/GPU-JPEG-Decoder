@@ -3,6 +3,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <cstring> 
 #include <vector>
 #include "../utils/stream.h"
 
@@ -31,7 +32,7 @@ struct HuffmanTreeNode {
 */
 class HuffmanTree {
     std::vector<HuffmanTreeNode*> nodes;
-    std::vector<uint8_t> bytes;
+    uint8_t* bytes;
     HuffmanTreeNode* root;
     std::unordered_map<uint8_t, std::string> codes;
 
@@ -41,7 +42,7 @@ class HuffmanTree {
     void clearTree(HuffmanTreeNode* node);  // Helper to clean up the tree
 
     public:
-        HuffmanTree(const std::vector<uint8_t>& bytes);
+        HuffmanTree(uint8_t* bytes);
         ~HuffmanTree();
         std::unordered_map<uint8_t, std::string> getCodes();
         uint8_t traverseTree(HuffmanTreeNode* cur, Stream* st);
