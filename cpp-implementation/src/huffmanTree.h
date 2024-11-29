@@ -38,9 +38,11 @@ class HuffmanTree {
     void createNodes();
     bool addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int position);
     void decodeTree(HuffmanTreeNode* node, std::string currentString);
+    void clearTree(HuffmanTreeNode* node);  // Helper to clean up the tree
 
     public:
         HuffmanTree(const std::vector<uint8_t>& bytes);
+        ~HuffmanTree();
         std::unordered_map<uint8_t, std::string> getCodes();
         uint8_t traverseTree(HuffmanTreeNode* cur, Stream* st);
         uint8_t getCode(Stream* st);
