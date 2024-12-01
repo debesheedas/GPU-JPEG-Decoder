@@ -88,7 +88,6 @@ JPEGParser::JPEGParser(std::string& imagePath) {
     int gridSize = (64 + blockSize - 1) / blockSize;
     cudaMalloc((void**)&idctTable, 64 * sizeof(double));
     initializeIDCTTableKernel<<<blockSize, gridSize>>>(idctTable, 64);
-    std::cout << " exitinf constructor " << std::endl;
 }
 
 void JPEGParser::extract() {        
@@ -102,27 +101,27 @@ void JPEGParser::extract() {
         uint16_t marker = stream->getMarker();
 
         if (marker == MARKERS[0]) {
-            std::cout << " beginning " << std::endl;
             continue;
         } else if (marker == MARKERS[1]) {
-            std::cout << " second beginning " << std::endl;
             tableSize = stream->getMarker();
+            this->applicationHeader = new uint8_t[(int) tableSize - 2];
             stream->getNBytes(this->applicationHeader, int(tableSize - 2));
         } else if (marker == MARKERS[2]) {
-            std::cout << " quant table " << std::endl;
             stream->getMarker();
             uint8_t destination = stream->getByte();
+            this->quantTable1 = new uint8_t[64];
             stream->getNBytes(quantTable1, 64);
             if(stream->getMarker() == MARKERS[2]) {
                 stream->getMarker();
                 destination = stream->getByte();
+                this->quantTable2 = new uint8_t[64];
                 stream->getNBytes(quantTable2, 64);
             } else {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
         } else if (marker == MARKERS[3]) {
-            std::cout << " frame table " << std::endl;
             tableSize = stream->getMarker();
+            this->startOfFrame = new uint8_t[(int) tableSize - 2];
             stream->getNBytes(this->startOfFrame, (int) tableSize - 2);
             Stream* frame = new Stream(this->startOfFrame);
             int precision = frame->getByte();
@@ -130,15 +129,16 @@ void JPEGParser::extract() {
             this->width = frame->getMarker();
             delete frame;
         } else if (marker == MARKERS[4]) {
-            std::cout << " huffman table " << std::endl;
             tableSize = stream->getMarker();
             header = stream->getByte();
+            this->huffmanTable1 = new uint8_t[(int) tableSize - 3];
             stream->getNBytes(this->huffmanTable1, (int) tableSize - 3);
             this->huffmanTrees[header] = new HuffmanTree(this->huffmanTable1);
 
             if (stream->getMarker() ==  MARKERS[4]) {
                 tableSize = stream->getMarker();
                 header = stream->getByte();
+                this->huffmanTable2 = new uint8_t[(int) tableSize - 3];
                 stream->getNBytes(this->huffmanTable2, (int) tableSize - 3);
                 this->huffmanTrees[header] = new HuffmanTree(this->huffmanTable2);
             }
@@ -146,6 +146,7 @@ void JPEGParser::extract() {
             if (stream->getMarker() ==  MARKERS[4]) {
                 tableSize = stream->getMarker();
                 header = stream->getByte();
+                this->huffmanTable3 = new uint8_t[(int) tableSize - 3];
                 stream->getNBytes(this->huffmanTable3, (int) tableSize - 3);
                 this->huffmanTrees[header] = new HuffmanTree(this->huffmanTable3);
             }
@@ -153,16 +154,19 @@ void JPEGParser::extract() {
             if (stream->getMarker() ==  MARKERS[4]) {
                 tableSize = stream->getMarker();
                 header = stream->getByte();
+                this->huffmanTable4 = new uint8_t[(int) tableSize - 3];
                 stream->getNBytes(this->huffmanTable4, (int) tableSize - 3);
                 this->huffmanTrees[header] = new HuffmanTree(this->huffmanTable4);
             }
 
         } else if (marker == MARKERS[5]) {
-            std::cout << " start of scan " << std::endl;
             tableSize = stream->getMarker();
+            this->startOfScan = new uint8_t[(int) tableSize - 2];
             stream->getNBytes(this->startOfScan, (int) tableSize - 2);
             uint8_t curByte, prevByte = 0x00;
-
+            size_t size = 5 * 1024 * 1024;
+            this->imageData = new uint8_t[size];
+            
             while (true) {
                 curByte = stream->getByte();
                 if ((prevByte == 0xff) && (curByte == 0xd9))
@@ -181,12 +185,10 @@ void JPEGParser::extract() {
             break;
         }
     } 
-    std::cout << "eixing the extract " << imageDataLength << std::endl;
     delete stream;   
 }
 
 void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quant, int& oldCoeff) {
-    std::cout << " jdfjsjfjkdjakjdksajdkasjdk " << std::endl;
     uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
     uint16_t bits = imageStream->getNBits(code);
     int decoded = Stream::decodeNumber(code, bits);
@@ -245,6 +247,17 @@ JPEGParser::~JPEGParser() {
     for (auto& tree : huffmanTrees) {
         delete tree.second;
     }
+
+    delete this->applicationHeader;
+    delete this->quantTable1;
+    delete this->quantTable2;
+    delete this->startOfFrame;
+    delete this->startOfScan;
+    delete this->huffmanTable1;
+    delete this->huffmanTable2;
+    delete this->huffmanTable3;
+    delete this->huffmanTable4;
+    delete this->imageData;
 }
 
 __global__ void performIDCTKernel(int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, int validWidth) {
