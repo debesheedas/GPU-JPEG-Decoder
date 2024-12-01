@@ -2,49 +2,6 @@
 
 __constant__ int initialZigzag[64]; 
 
-__global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int width, int height, int xBlocks, int yBlocks) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
-    int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
-    int i = y * width + x;
-
-    if (x < width && y < height) {
-        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
-        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
-
-        float red = chromRed[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + luminous[blockIndex * 64 + pixelIndexInBlock];
-        float blue = chromYel[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + luminous[blockIndex * 64 + pixelIndexInBlock];
-        float green = (luminous[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
-
-        int castedRed = static_cast<int>(red + 128);
-        int castedGreen = static_cast<int>(green + 128);
-        int castedBlue = static_cast<int>(blue + 128);
-
-        if (castedRed > 255) {
-            chromRed[i] = 255;
-        } else if (castedRed < 0) {
-            chromRed[i] = 0;
-        } else {
-            chromRed[i] = castedRed;
-        }
-
-        if (castedGreen > 255) {
-            chromYel[i] = 255;
-        } else if (castedGreen < 0) {
-            chromYel[i] = 0;
-        } else {
-            chromYel[i] = castedGreen;
-        }
-
-        if (castedBlue > 255) {
-            luminous[i] = 255;
-        } else if (castedBlue < 0) {
-            luminous[i] = 0;
-        } else {
-            luminous[i] = castedBlue;
-        }
-    }
-}
-
 __global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -260,14 +217,16 @@ JPEGParser::~JPEGParser() {
     delete this->imageData;
 }
 
-__global__ void performIDCTKernel(int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, int validWidth) {
+__global__ void decodeKernel(int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, int validWidth,  int width, int height, int xBlocks, int yBlocks, int* redOutput, int* greenOutput, int* blueOutput) {
     // Shared memory for zigzag arrays
     __shared__ int sharedZigzag[3 * 64];
     int* zigzag_l = &sharedZigzag[0];
     int* zigzag_r = &sharedZigzag[64];
     int* zigzag_y = &sharedZigzag[128];
     
-    int blockStart = blockIdx.x * 64;
+
+    int globalBlockIndex = blockIdx.y * gridDim.x + blockIdx.x;
+    int blockStart = globalBlockIndex * 64;
 
     // Identify the thread's position in the 8x8 grid
     int threadRow = threadIdx.y; // Row index (0-7)
@@ -301,12 +260,55 @@ __global__ void performIDCTKernel(int* arr_l, int* arr_r, int* arr_y, double* id
             }
         }
 
-        arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0));
-        arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0));
-        arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0));
+        arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0)); //luminuous
+        arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0)); //chromyel
+        arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0)); // chromred
     }
-}
 
+    __syncthreads();
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
+    int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
+    int i = y * width + x;
+
+    if (x < width && y < height) {
+        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
+        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
+
+        float red = arr_y[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + arr_l[blockIndex * 64 + pixelIndexInBlock];
+        float blue = arr_r[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + arr_l[blockIndex * 64 + pixelIndexInBlock];
+        float green = (arr_l[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
+
+        int castedRed = static_cast<int>(red + 128);
+        int castedGreen = static_cast<int>(green + 128);
+        int castedBlue = static_cast<int>(blue + 128);
+
+        if (castedRed > 255) {
+            redOutput[i] = 255;
+        } else if (castedRed < 0) {
+            redOutput[i] = 0;
+        } else {
+            redOutput[i] = castedRed;
+        }
+
+        if (castedGreen > 255) {
+            greenOutput[i] = 255;
+        } else if (castedGreen < 0) {
+            greenOutput[i] = 0;
+        } else {
+            greenOutput[i] = castedGreen;
+        }
+
+        if (castedBlue > 255) {
+            blueOutput[i] = 255;
+        } else if (castedBlue < 0) {
+            blueOutput[i] = 0;
+        } else {
+            blueOutput[i] = castedBlue;
+        }
+    }
+
+}
 
 void JPEGParser::decode() {
     int oldLumCoeff = 0;
@@ -324,9 +326,13 @@ void JPEGParser::decode() {
 
     // Allocating the channels in the GPU memory.
     int *luminous, *chromRed, *chromYel;
+    int *redOutput, *greenOutput, *blueOutput;
     cudaMalloc((void**)&luminous, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromRed, 64 * xBlocks * yBlocks * sizeof(int));
     cudaMalloc((void**)&chromYel, 64 * xBlocks * yBlocks * sizeof(int));
+    cudaMalloc((void**)&redOutput, 64 * xBlocks * yBlocks * sizeof(int));
+    cudaMalloc((void**)&greenOutput, 64 * xBlocks * yBlocks * sizeof(int));
+    cudaMalloc((void**)&blueOutput, 64 * xBlocks * yBlocks * sizeof(int));
 
     int* hostBuffer_l = new int[64 * xBlocks * yBlocks * sizeof(int)];
     int* hostBuffer_y = new int[64 * xBlocks * yBlocks * sizeof(int)];
@@ -358,19 +364,16 @@ void JPEGParser::decode() {
     int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
     dim3 threadsPerBlock(8, 8);
 
-    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, chromRed, chromYel, idctTable, 8, 8);
-
-    this->channels = new ImageChannels(this->height * this->width);
-
     // Convert YCbCr channels to RGB
     dim3 blockSize(8, 8);
-    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
+    dim3 gridSize(xBlocks, yBlocks);
     size_t channelSize = width * height * sizeof(int);
-    colorConversionKernel<<<gridSize, blockSize>>>(luminous, chromYel, chromRed, width, height, xBlocks, yBlocks);
+    decodeKernel<<<gridSize, blockSize>>>(luminous, chromRed, chromYel, idctTable, 8, 8,  width, height, xBlocks, yBlocks, redOutput, greenOutput, blueOutput);
+    this->channels = new ImageChannels(this->height * this->width);
 
-    cudaMemcpy(channels->getR().data(), chromYel, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getG().data(), chromRed, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getB().data(), luminous, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getR().data(), redOutput, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getG().data(), greenOutput, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getB().data(), blueOutput, channelSize, cudaMemcpyDeviceToHost);
 
     if (luminous) cudaFree(luminous);
     if (chromRed) cudaFree(chromRed);
@@ -380,6 +383,9 @@ void JPEGParser::decode() {
     delete hostBuffer_l;
     delete hostBuffer_r;
     delete hostBuffer_y;
+    cudaFree(redOutput);
+    cudaFree(greenOutput);
+    cudaFree(blueOutput);
 }
 
 void JPEGParser::write() {
