@@ -7,7 +7,7 @@
 
 namespace fs = std::filesystem;
 
-path_to_decoder = /home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/jpeglib-implementation/libjpeg_install/build/djpeg;
+std::string path_to_decoder = "/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/jpeglib-implementation/libjpeg_install/build/djpeg";
 
 // Function to get all images with a specified size
 std::vector<std::string> getImagesBySize(const std::string& datasetPath, int size) {
@@ -29,7 +29,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
     
     for (auto _ : state) {
         auto start_time = std::chrono::high_resolution_clock::now();
-        std::string command = "./" + path_to_decoder + " " + imagePath;
+        std::string command = path_to_decoder + " " + imagePath;
         int ret_code = system(command.c_str());
         if (ret_code != 0) {
             throw std::runtime_error("Command execution failed with code: " + std::to_string(ret_code));

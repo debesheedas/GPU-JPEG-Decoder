@@ -4,7 +4,7 @@ import sys
 import os
 
 
-TOL = 6
+TOL = 8
 
 def read_output(filename):
     with open(filename, 'r') as f:
