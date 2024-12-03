@@ -1,6 +1,54 @@
-#include "parser.h"
+#include "parser2.h"
 
 __constant__ int initialZigzag[64]; 
+
+__device__ int match_huffman_code(const unsigned uint8_t* stream, int bit_offset, 
+                                  const uint16_t* huff_codes, 
+                                  const int* huff_bits) {
+    // Extract up to 16 bits from the stream (max Huffman code length)
+    unsigned int extracted_bits = getNBits(stream, bit_offset, 16);
+
+    // Compare against Huffman table
+    for (int i = 0; i < 256; ++i) {
+        if (huff_bits[i] > 0 && huff_bits[i] <= 16) { // Valid bit length
+            unsigned int mask = (1 << huff_bits[i]) - 1;
+            if ((extracted_bits >> (16 - huff_bits[i])) == huff_codes[i]) {
+                return i; // Return the index of the matched Huffman code
+            }
+        }
+    }
+
+    return -1; // No match found
+}
+
+// __device__ int parallel_match_huffman_code(const uint8_t* stream, int bit_offset, 
+//                                            const uint16_t* huff_codes, const int* huff_bits) {
+//     // Extract up to 16 bits from the stream (max Huffman code length)
+//     unsigned int extracted_bits = getNBits(stream, bit_offset, 16);
+
+//     // Allocate shared memory for threads to indicate match
+//     __shared__ int match_index;
+//     if (threadIdx.x == 0) {
+//         match_index = -1; // Initialize to no match
+//     }
+//     __syncthreads();
+
+//     // Each thread checks one Huffman code
+//     int thread_code_index = threadIdx.x;
+//     if (thread_code_index < 256) {
+//         if (huff_bits[thread_code_index] > 0 && huff_bits[thread_code_index] <= 16) {
+//             unsigned int mask = (1 << huff_bits[thread_code_index]) - 1;
+//             if ((extracted_bits >> (16 - huff_bits[thread_code_index])) == huff_codes[thread_code_index]) {
+//                 atomicMin(&match_index, thread_code_index); // Record the match index
+//             }
+//         }
+//     }
+
+//     __syncthreads();
+
+//     // Return the matching index
+//     return match_index;
+// }
 
 __global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
 {
@@ -58,17 +106,21 @@ void JPEGParser::extract() {
         uint16_t marker = stream->getMarker();
 
         if (marker == MARKERS[0]) {
+            std::cout << "beginning" << std::endl;
             continue;
         } else if (marker == MARKERS[1]) {
+            std::cout << "other beginning" << std::endl;
             tableSize = stream->getMarker();
             this->applicationHeader = new uint8_t[(int) tableSize - 2];
             stream->getNBytes(this->applicationHeader, int(tableSize - 2));
         } else if (marker == MARKERS[2]) {
+            std::cout << "other marker" << std::endl;
             stream->getMarker();
             uint8_t destination = stream->getByte();
             this->quantTable1 = new uint8_t[64];
             stream->getNBytes(quantTable1, 64);
             if(stream->getMarker() == MARKERS[2]) {
+                std::cout << "other other beginning" << std::endl;
                 stream->getMarker();
                 destination = stream->getByte();
                 this->quantTable2 = new uint8_t[64];
@@ -77,6 +129,7 @@ void JPEGParser::extract() {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
         } else if (marker == MARKERS[3]) {
+            std::cout << "makrer start if frame" << std::endl;
             tableSize = stream->getMarker();
             this->startOfFrame = new uint8_t[(int) tableSize - 2];
             stream->getNBytes(this->startOfFrame, (int) tableSize - 2);
@@ -106,6 +159,8 @@ void JPEGParser::extract() {
                 this->huffmanTable3 = new uint8_t[(int) tableSize - 3];
                 stream->getNBytes(this->huffmanTable3, (int) tableSize - 3);
                 this->huffmanTrees[header] = new HuffmanTree(this->huffmanTable3);
+                std::cout << "printing the codes " << std::endl;
+                this->huffmanTrees[header]->printCodes();
             }
 
             if (stream->getMarker() ==  MARKERS[4]) {
@@ -146,7 +201,7 @@ void JPEGParser::extract() {
 }
 
 void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quant, int& oldCoeff) {
-    uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
+    //uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
     uint16_t bits = imageStream->getNBits(code);
     int decoded = Stream::decodeNumber(code, bits);
     int dcCoeff = decoded + oldCoeff;
@@ -206,8 +261,8 @@ JPEGParser::~JPEGParser() {
     }
 
     delete this->applicationHeader;
-    delete this->quantTable1;
-    delete this->quantTable2;
+    //delete this->quantTable1;
+    //delete this->quantTable2;
     delete this->startOfFrame;
     delete this->startOfScan;
     delete this->huffmanTable1;
@@ -390,7 +445,7 @@ void JPEGParser::decode() {
 
 void JPEGParser::write() {
     // Writing the decoded channels to a file instead of displaying using opencv
-    fs::path output_dir = "../testing/cuda_output_arrays"; // Change the directory name here for future CUDA implementations
+    fs::path output_dir = "../testing/cudaU_output_arrays"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / this->filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);

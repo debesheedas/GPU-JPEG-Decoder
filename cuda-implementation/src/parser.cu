@@ -167,16 +167,18 @@ void JPEGParser::extract() {
 
 void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quant, int& oldCoeff) {
     uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
+    printf("dc code %d:\n", code);
     uint16_t bits = imageStream->getNBits(code);
     int decoded = Stream::decodeNumber(code, bits);
     int dcCoeff = decoded + oldCoeff;
+    printf("dc coeff %d:\n", dcCoeff);
 
     hostBuffer[0] = dcCoeff * (int) this->quantTables[quant][0];
     int length = 1;
 
     while (length < 64) {
         code = this->huffmanTrees[16 + hf]->getCode(imageStream);
-
+        printf("code %d:\n", code);
         if (code == 0) {
             break;
         }
@@ -190,6 +192,7 @@ void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quan
         bits = imageStream->getNBits(code);
         if (length < 64) {
             decoded = Stream::decodeNumber(code, bits);
+            printf("ac coeff %d:\n", decoded);
             int val = decoded * (int) this->quantTables[quant][length];
             hostBuffer[length] = val;
             length++;
@@ -298,9 +301,11 @@ void JPEGParser::decode() {
             // Determine the valid width and height for this block to account for padding
             // int blockWidth = (x == xBlocks - 1 && paddedWidth != this->width) ? this->width % 8 : 8;
             // int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
-
+            // printf("oldLumcoefficient %d:\n", oldLumCoeff);
             this->buildMCU(curLuminous, imageStream, 0, 0, oldLumCoeff);
+            // printf("oldCbdcoefficient %d:\n", oldCbdCoeff);
             this->buildMCU(curChromRed, imageStream, 1, 1, oldCbdCoeff);
+            // printf("oldCrdcoefficient %d:\n", oldCrdCoeff);
             this->buildMCU(curChromYel, imageStream, 1, 1, oldCrdCoeff);
             curLuminous += 64;
             curChromRed += 64;
@@ -311,6 +316,28 @@ void JPEGParser::decode() {
     cudaMemcpy(luminous, hostBuffer_l, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(chromRed, hostBuffer_r, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(chromYel, hostBuffer_y, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
+
+    int bytes = 64 * xBlocks * yBlocks * sizeof(int);
+    int *h_array = (int *)malloc(bytes);
+
+    cudaMemcpy(h_array, luminous, bytes, cudaMemcpyDeviceToHost);
+    std::cout << "Array contents copied from GPU to CPU:" << std::endl;
+    for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
+        std::cout << h_array[i] << " ";
+    }
+    std::cout << std::endl;
+    cudaMemcpy(h_array, chromRed, bytes, cudaMemcpyDeviceToHost);
+    std::cout << "Array contents copied from GPU to CPU:" << std::endl;
+    for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
+        std::cout << h_array[i] << " ";
+    }
+    std::cout << std::endl;
+    cudaMemcpy(h_array, chromYel, bytes, cudaMemcpyDeviceToHost);
+    std::cout << "Array contents copied from GPU to CPU:" << std::endl;
+    for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
+        std::cout << h_array[i] << " ";
+    }
+    std::cout << std::endl;
 
     int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
     dim3 threadsPerBlock(8, 8);

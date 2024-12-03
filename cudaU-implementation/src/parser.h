@@ -7,8 +7,9 @@
 #include <filesystem>
 
 #include "../utils/color.h"
+#include "../utils/utils.h"
 #include "idct.h"
-#include "huffmanTree.h"
+#include "huffmanTree2.h"
 #include <cuda_runtime.h>
 
 #ifdef __APPLE__
@@ -53,24 +54,42 @@ class JPEGParser {
         uint8_t *huffmanTable1, *huffmanTable2, *huffmanTable3, *huffmanTable4;
         std::unordered_map<int,HuffmanTree*> huffmanTrees;
 
+
         // Quant Tables
         uint8_t *quantTable1, *quantTable2;
+
+        // Huffman Lookup Tables
+        uint16_t* hf0codes;
+        uint16_t* hf1codes; 
+        uint16_t* hf16codes;
+        uint16_t* hf17codes;
+        int* hf0lengths; 
+        int* hf1lengths; 
+        int* hf16lengths; 
+        int* hf17lengths;
 
         ImageChannels* channels;
         // Image features.
         int height;
         int width;
+        int paddedWidth, paddedHeight, xBlocks, yBlocks;
         int imageDataLength;
 
         double* idctTable;
         int* zigzag;
 
+        int *luminous, *chromRed, *chromYel;
+        int *redOutput, *greenOutput, *blueOutput;
+
         // Methods for extracting and building blocks.
-        void buildMCU(int* arr, Stream* imageStream, int hf, int quant, int& oldcoeff);
+        __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8_t* quant, int& oldCoeff, uint16_t* dcHfcodes, int* dcHflengths, uint16_t* acHfcodes, int* acHflengths);
+        __device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length);
+        
     public:
         JPEGParser(std::string& imagePath);
         ~JPEGParser();
         void extract();
+        void move();
         void decode();
         void write();
 };
