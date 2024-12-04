@@ -357,7 +357,6 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
    while (pixelIndex < totalPixels) {
         int threadIndexInBlock = pixelIndex % 64;
         int blockIndex = pixelIndex / 64;
-        int localBlockIndex = threadId / 64;
 
         __shared__ int sharedZigzag[3 * 256];
         int* zigzag_l = &sharedZigzag[0];
@@ -396,9 +395,6 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
 }
 
 void JPEGParser::decode() {
-    dim3 blockSize(8, 8);
-    dim3 gridSize(this->xBlocks, this->yBlocks);
-
     decodeKernel<<<1, 256>>>(this->imageData, this->luminous, this->chromRed, this->chromYel, idctTable, 8, 8,  
                                             this->width, this->height, this->xBlocks, this->yBlocks, this->redOutput, this->greenOutput, this->blueOutput,
                                             this->quantTable1, this->quantTable2, this->hf0codes, this->hf1codes, this->hf16codes, this->hf17codes, 

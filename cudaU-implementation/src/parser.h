@@ -6,7 +6,6 @@
 #include <iostream>
 #include <filesystem>
 
-#include "../utils/color.h"
 #include "../utils/utils.h"
 #include "huffmanTree.h"
 #include <cuda_runtime.h>
