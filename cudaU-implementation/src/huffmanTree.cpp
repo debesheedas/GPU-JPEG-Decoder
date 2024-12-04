@@ -1,3 +1,4 @@
+#include <iostream>
 #include "huffmanTree.h"
 
 // Constructor for HuffmanTree
@@ -5,11 +6,14 @@ HuffmanTree::HuffmanTree(uint8_t* bytes) {
     this->bytes = bytes;
     this->createNodes();
     this->root = new HuffmanTreeNode(0,0,false);
+    this->codes = new uint16_t[256];
+    this->codeLengths = new int[256];
 
     for(const auto& n: this->nodes) {
         this->addToTree(this->root, n, n->length);
     }
     this->decodeTree(this->root, "");
+    this->createCodes(this->root, 0, 0);
 }
 
 HuffmanTree::~HuffmanTree() {
@@ -30,6 +34,22 @@ void HuffmanTree::createNodes() {
             this->nodes.push_back(new HuffmanTreeNode(curVal, i+1, true));
         }
     }
+}
+
+// Create codes for the tree
+void HuffmanTree::createCodes(HuffmanTreeNode* node, uint16_t value, int length) {
+    if (node->isLeaf) {
+        this->codes[node->val] = value;
+        this->codeLengths[node->val] = length;
+        return;
+    }
+    if (node->left != NULL) {
+        this->createCodes(node->left, value << 1, length + 1);
+    }
+    if (node->right != NULL) {
+        this->createCodes(node->right, (value << 1) + 1, length + 1);
+    }
+    return;
 }
 
 bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int position) {
@@ -71,7 +91,7 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
 void HuffmanTree::decodeTree(HuffmanTreeNode* node, std::string currentString) {
     // If we reach a leaf node we return the value.
     if (node->isLeaf) {
-        this->codes[node->val] = currentString;
+        this->codesString[node->val] = currentString;
         return;
     }
     if (node->left != NULL) {
@@ -108,4 +128,10 @@ void HuffmanTree::clearTree(HuffmanTreeNode* node) {
 
 uint8_t HuffmanTree::getCode(Stream* st) {
     return this->traverseTree(this->root, st);
+} 
+
+void HuffmanTree::printCodes() {
+    for (int i = 0; i < 256; i++) {
+        std::cout << i << "  " << (int)this->codes[i] << " " << (int) this->codeLengths[i] << std::endl;
+    }
 }

@@ -241,7 +241,6 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
     }
     // Update oldCoeff for the next MCU
     oldCoeff = dcCoeff;
-    // printf("Returning Bitoffset %d:\n", bitOffset);
     return bitOffset;
 }
 
@@ -404,30 +403,8 @@ void JPEGParser::decode() {
                                             this->width, this->height, this->xBlocks, this->yBlocks, this->redOutput, this->greenOutput, this->blueOutput,
                                             this->quantTable1, this->quantTable2, this->hf0codes, this->hf1codes, this->hf16codes, this->hf17codes, 
                                             this->hf0lengths, this->hf1lengths, this->hf16lengths, this->hf17lengths);
+
     this->channels = new ImageChannels(this->height * this->width);
-
-    // FOR DEBUGGING PURPOSES ONLY
-    int bytes = 64 * xBlocks * yBlocks * sizeof(int);
-    int *h_array = (int *)malloc(bytes);
-
-    cudaMemcpy(h_array, luminous, bytes, cudaMemcpyDeviceToHost);
-    std::cout << "\n\nArray contents copied from GPU to CPU:" << std::endl;
-    for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
-        std::cout << h_array[i] << " ";
-    }
-    std::cout << std::endl;
-    cudaMemcpy(h_array, chromRed, bytes, cudaMemcpyDeviceToHost);
-    std::cout << "Array contents copied from GPU to CPU:" << std::endl;
-    for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
-        std::cout << h_array[i] << " ";
-    }
-    std::cout << std::endl;
-    cudaMemcpy(h_array, chromYel, bytes, cudaMemcpyDeviceToHost);
-    std::cout << "Array contents copied from GPU to CPU:" << std::endl;
-    for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
-        std::cout << h_array[i] << " ";
-    }
-    std::cout << std::endl;
 
     if (luminous) cudaFree(luminous);
     if (chromRed) cudaFree(chromRed);

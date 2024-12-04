@@ -8,8 +8,7 @@
 
 #include "../utils/color.h"
 #include "../utils/utils.h"
-#include "idct.h"
-#include "huffmanTree2.h"
+#include "huffmanTree.h"
 #include <cuda_runtime.h>
 
 #ifdef __APPLE__

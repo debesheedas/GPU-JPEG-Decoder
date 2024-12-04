@@ -34,19 +34,24 @@ class HuffmanTree {
     std::vector<HuffmanTreeNode*> nodes;
     uint8_t* bytes;
     HuffmanTreeNode* root;
-    std::unordered_map<uint8_t, std::string> codes;
+    std::unordered_map<uint8_t, std::string> codesString;
 
     void createNodes();
     bool addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int position);
     void decodeTree(HuffmanTreeNode* node, std::string currentString);
     void clearTree(HuffmanTreeNode* node);  // Helper to clean up the tree
-
+    void createCodes(HuffmanTreeNode* node, uint16_t value, int length);
+    
     public:
         HuffmanTree(uint8_t* bytes);
         ~HuffmanTree();
         std::unordered_map<uint8_t, std::string> getCodes();
         uint8_t traverseTree(HuffmanTreeNode* cur, Stream* st);
         uint8_t getCode(Stream* st);
+        void printCodes();
+        uint16_t* codes;
+        int* codeLengths;
+        //__device__ static uint8_t getCode(uint8_t* bitStream, int& bitOffset);
 };
 
 #endif
