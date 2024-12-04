@@ -50,7 +50,6 @@ JPEGParser::JPEGParser(std::string& imagePath) {
 void JPEGParser::move() {
     // allocate all GPU space required here.
     //copy whatever data possible to copy at this point  
-
     // Copy the Huffman Loookup Tables here
     cudaMalloc((uint16_t**)&this->hf0codes, 256 * sizeof(uint16_t));
     cudaMalloc((uint16_t**)&this->hf1codes, 256 * sizeof(uint16_t));
@@ -66,10 +65,6 @@ void JPEGParser::move() {
     cudaMemcpy(this->hf1codes, this->huffmanTrees[1]->codes, 256 * sizeof(uint16_t), cudaMemcpyHostToDevice);
     cudaMemcpy(this->hf16codes, this->huffmanTrees[16]->codes, 256 * sizeof(uint16_t), cudaMemcpyHostToDevice);
     cudaMemcpy(this->hf17codes, this->huffmanTrees[17]->codes, 256 * sizeof(uint16_t), cudaMemcpyHostToDevice);
-    // printf("huffman codes\n");
-    // for (int idx=0; idx < 20; idx++) {
-    //     printf("arr[%d] = %u\n", idx, static_cast<unsigned int>(this->huffmanTrees[0]->codes[idx]));
-    // }
 
     cudaMemcpy(this->hf0lengths, this->huffmanTrees[0]->codeLengths, 256 * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(this->hf1lengths, this->huffmanTrees[1]->codeLengths, 256 * sizeof(int), cudaMemcpyHostToDevice);
@@ -91,7 +86,6 @@ void JPEGParser::extract() {
 
     // Using the Stream class for reading bytes.
     Stream* stream = new Stream(this->readBytes);
-
     while (true) {
         uint16_t marker = stream->getMarker();
 
@@ -191,10 +185,6 @@ void JPEGParser::extract() {
             imageDataLength--; // We remove the ending byte because it is extra 0xff.
             cudaMalloc((void**)&this->imageData, imageDataLength * sizeof(uint8_t));
             cudaMemcpy(this->imageData, host_imageData, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
-            // for (int idx=0; idx < 20; idx++) {
-            //     printf("arr[%d] = %u\n", idx, static_cast<unsigned int>(host_imageData[idx]));
-            // }
-            // printf("__________________");
             break;
         }
     } 
@@ -202,27 +192,8 @@ void JPEGParser::extract() {
     move(); 
 }
 
-// __device__ uint8_t getCode(uint8_t* imageData, int bitOffset, uint16_t* hfcodes, int* hflengths) {
-//     // TODO: Beste
-//     // This function takes a pointer to the image data stream on the gpu and its bitoffset and pointers to the two huffman lookup tables on the GPU
-//     // It returns the huffman decoded value
-// }
 __device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length) {
-    // printf("bit_offset %d:\n", bit_offset);
-    // for (int idx=0; idx < 20; idx++) {
-    //     printf("arr[%d] = %u\n", idx, static_cast<unsigned int>(stream[idx]));
-    // }
-    // printf("huffman codes\n");
-    // for (int idx=0; idx < 20; idx++) {
-    //     printf("arr[%d] = %u\n", idx, static_cast<unsigned int>(huff_codes[idx]));
-    // }
-    // printf("huffman  bits\n");
-    // for (int idx=0; idx < 20; idx++) {
-    //     printf("arr[%d] = %u\n", idx, static_cast<unsigned int>(huff_bits[idx]));
-    // }
-    // Extract up to 16 bits from the stream (max Huffman code length)
     unsigned int extracted_bits = getNBits(stream, bit_offset, 16);
-
     // Compare against Huffman table
     for (int i = 0; i < 256; ++i) {
         if (huff_bits[i] > 0 && huff_bits[i] <= 16) { // Valid bit length
@@ -235,69 +206,42 @@ __device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huf
             }
         }
     }
-    // return -1; // No match found
 }
 
 __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8_t* quant, 
                         int& oldCoeff, uint16_t* dcHfcodes, int* dcHflengths, uint16_t* acHfcodes, int* acHflengths) {
 
-    // uint8_t code = getCode(imageData, bitOffset, dcHfcodes, dcHflengths);
     int code = 0;
     int code_length = 0;
     match_huffman_code(imageData, bitOffset, dcHfcodes, dcHflengths, code, code_length);
     bitOffset += code_length;
-    printf("dc code %d:\n", code);
-    //std::cout << code << " is the code " << std::endl;
-    //int code = 200;
     uint16_t bits = getNBits(imageData, bitOffset, code);
-    bitOffset += code;
 
     int decoded = decodeNumber(code, bits); 
     int dcCoeff = decoded + oldCoeff;
-    printf("dc coeff %d:\n", dcCoeff);
-    // if (quant == 0) {
-    //     hostBuffer[0] = dcCoeff * (int) this->quantTable1[0];
-    // } else {
-    //     hostBuffer[0] = dcCoeff * (int) this->quantTable2[0];
-    // }
     outBuffer[0] = dcCoeff * (int) quant[0];
 
     int length = 1;
-
     while (length < 64) {
-        // code = getCode(imageData, bitOffset, acHfcodes, acHflengths);
         match_huffman_code(imageData, bitOffset, acHfcodes, acHflengths, code, code_length);
         bitOffset += code_length;
-        printf("code %d:\n", code);
         if (code == 0) {
             break;
         }
-
         // The first part of the AC key length is the number of leading zeros
         if (code > 15) {
             length += (code >> 4);
             code = code & 0x0f;
         }
-
-        // bits = imageStream->getNBits(code);
         bits = getNBits(imageData, bitOffset, code);
-        bitOffset += code;
-
         if (length < 64) {
             decoded = decodeNumber(code, bits);
             int val;
-            // if (quant == 0) {
-            //     val = decoded * (int) this->quantTable1[length];
-            // } else {
-            //     val = decoded * (int) this->quantTable2[length];
-            // }
-            printf("ac coeff %d:\n", decoded);
             val = decoded * (int) quant[length];
             outBuffer[length] = val;
             length++;
         }
     }
-
     // Update oldCoeff for the next MCU
     oldCoeff = dcCoeff;
     // printf("Returning Bitoffset %d:\n", bitOffset);
@@ -305,18 +249,14 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
 }
 
 JPEGParser::~JPEGParser() {
-
     cudaFree(idctTable);
-
     delete[] quantTable1;
     delete[] quantTable2;
-
     delete channels;
-
     for (auto& tree : huffmanTrees) {
         delete tree.second;
     }
-
+    delete this->readBytes;
     delete this->applicationHeader;
     delete this->quantTable1;
     delete this->quantTable2;
@@ -347,11 +287,7 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     int globalIndex = blockStart + threadIndexInBlock;
 
     if (globalIndex==0) {
-        printf("Thread %d:\n", globalIndex);
-        // printf("huffman codes of hf0codes\n");
-        // for (int idx=0; idx < 20; idx++) {
-        //     printf("arr[%d] = %u\n", idx, static_cast<unsigned int>(hf0codes[idx]));
-        // }
+        // printf("Thread %d:\n", globalIndex);
         int *curLuminous = arr_l;
         int *curChromRed = arr_r;
         int *curChromYel = arr_y;
@@ -361,22 +297,9 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
         int bitOffset = 0;
         for (int y = 0; y < yBlocks; y++) {
             for (int x = 0; x < xBlocks; x++) {
-                // Determine the valid width and height for this block to account for padding
-                // int blockWidth = (x == xBlocks - 1 && paddedWidth != this->width) ? this->width % 8 : 8;
-                // int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
-
-                // bitOffset = buildMCU(curLuminous, imageStream, 0, 0, oldLumCoeff);
-                // printf("oldLumcoefficient %d:\n", oldLumCoeff);
                 bitOffset = buildMCU(curLuminous, imageData, bitOffset, quant1, oldLumCoeff, hf0codes, hf0lengths, hf16codes, hf16lengths);
-                // printf("Bitoffset %d:\n", bitOffset);
-                // printf("oldCbdcoefficient %d:\n", oldCbdCoeff);
                 bitOffset = buildMCU(curChromRed, imageData, bitOffset, quant2, oldCbdCoeff, hf1codes, hf1lengths, hf17codes, hf17lengths);
-                // printf("Bitoffset %d:\n", bitOffset);
-                // printf("oldCrdcoefficient %d:\n", oldCrdCoeff);
                 bitOffset = buildMCU(curChromYel, imageData, bitOffset, quant2, oldCrdCoeff, hf1codes, hf1lengths, hf17codes, hf17lengths);
-                // bitOffset = buildMCU(curChromRed, imageStream, 1, 1, oldCbdCoeff);
-                // bitOffset = buildMCU(curChromYel, imageStream, 1, 1, oldCrdCoeff);
-
                 curLuminous += 64;
                 curChromRed += 64;
                 curChromYel += 64;
@@ -402,6 +325,13 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     }
 
     __syncthreads();
+    
+    if (globalIndex == 0) {
+        printf("--------");
+        for (int i = 0; i < 64; i++) {
+            printf("zigzag %d, %d, %d", zigzag_l[i], zigzag_r[i], zigzag_y[i]);
+        }
+    }
 
     if (threadCol < validWidth && threadRow < validHeight) {
         double localSum_l = 0.0;
@@ -462,63 +392,9 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
             blueOutput[i] = castedBlue;
         }
     }
-
 }
 
 void JPEGParser::decode() {
-    // int oldLumCoeff = 0;
-    // int oldCbdCoeff = 0;
-    // int oldCrdCoeff = 0;
-
-    // Pad the image dimension if it is not divisible by 8
-    // int paddedWidth = ((this->width + 7) / 8) * 8;
-    // int paddedHeight = ((this->height + 7) / 8) * 8;
-
-    // int xBlocks = paddedWidth / 8;
-    // int yBlocks = paddedHeight / 8;
-
-    // Stream* imageStream = new Stream(this->imageData);
-
-    // Allocating the channels in the GPU memory.
-    // int *luminous, *chromRed, *chromYel;
-    // int *redOutput, *greenOutput, *blueOutput;
-    // cudaMalloc((void**)&this->luminous, 64 * xBlocks * yBlocks * sizeof(int));
-    // cudaMalloc((void**)&this->chromRed, 64 * xBlocks * yBlocks * sizeof(int));
-    // cudaMalloc((void**)&this->chromYel, 64 * xBlocks * yBlocks * sizeof(int));
-    // cudaMalloc((void**)&this->redOutput, 64 * xBlocks * yBlocks * sizeof(int));
-    // cudaMalloc((void**)&this->greenOutput, 64 * xBlocks * yBlocks * sizeof(int));
-    // cudaMalloc((void**)&this->blueOutput, 64 * xBlocks * yBlocks * sizeof(int));
-
-    // int* hostBuffer_l = new int[64 * xBlocks * yBlocks * sizeof(int)];
-    // int* hostBuffer_y = new int[64 * xBlocks * yBlocks * sizeof(int)];
-    // int* hostBuffer_r = new int[64 * xBlocks * yBlocks * sizeof(int)];
-
-    // int *curLuminous = hostBuffer_l;
-    // int *curChromRed = hostBuffer_r;
-    // int *curChromYel = hostBuffer_y;
-
-    // for (int y = 0; y < yBlocks; y++) {
-    //     for (int x = 0; x < xBlocks; x++) {
-    //         // Determine the valid width and height for this block to account for padding
-    //         // int blockWidth = (x == xBlocks - 1 && paddedWidth != this->width) ? this->width % 8 : 8;
-    //         // int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
-
-    //         this->buildMCU(curLuminous, imageStream, 0, 0, oldLumCoeff);
-    //         this->buildMCU(curChromRed, imageStream, 1, 1, oldCbdCoeff);
-    //         this->buildMCU(curChromYel, imageStream, 1, 1, oldCrdCoeff);
-    //         curLuminous += 64;
-    //         curChromRed += 64;
-    //         curChromYel += 64;
-    //     }
-    // }
-
-    // cudaMemcpy(luminous, hostBuffer_l, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
-    // cudaMemcpy(chromRed, hostBuffer_r, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
-    // cudaMemcpy(chromYel, hostBuffer_y, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
-
-    // int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
-    // dim3 threadsPerBlock(8, 8);
-
     dim3 blockSize(8, 8);
     dim3 gridSize(this->xBlocks, this->yBlocks);
 
@@ -528,16 +404,12 @@ void JPEGParser::decode() {
                                             this->hf0lengths, this->hf1lengths, this->hf16lengths, this->hf17lengths);
     this->channels = new ImageChannels(this->height * this->width);
 
-    // cudaMemcpy(channels->getR().data(), redOutput, channelSize, cudaMemcpyDeviceToHost);
-    // cudaMemcpy(channels->getG().data(), greenOutput, channelSize, cudaMemcpyDeviceToHost);
-    // cudaMemcpy(channels->getB().data(), blueOutput, channelSize, cudaMemcpyDeviceToHost);
-
     // FOR DEBUGGING PURPOSES ONLY
     int bytes = 64 * xBlocks * yBlocks * sizeof(int);
     int *h_array = (int *)malloc(bytes);
 
     cudaMemcpy(h_array, luminous, bytes, cudaMemcpyDeviceToHost);
-    std::cout << "Array contents copied from GPU to CPU:" << std::endl;
+    std::cout << "\n\nArray contents copied from GPU to CPU:" << std::endl;
     for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
         std::cout << h_array[i] << " ";
     }
@@ -558,12 +430,14 @@ void JPEGParser::decode() {
     if (luminous) cudaFree(luminous);
     if (chromRed) cudaFree(chromRed);
     if (chromYel) cudaFree(chromYel);
-
-    // delete imageStream;
-    // delete hostBuffer_l;
-    // delete hostBuffer_r;
-    // delete hostBuffer_y;
-    
+    if (hf0codes) cudaFree(hf0codes);
+    if (hf1codes) cudaFree(hf1codes);
+    if (hf16codes) cudaFree(hf16codes);
+    if (hf17codes) cudaFree(hf17codes);
+    if (hf0lengths) cudaFree(hf0lengths);
+    if (hf1lengths) cudaFree(hf1lengths);
+    if (hf16lengths) cudaFree(hf16lengths);
+    if (hf17lengths) cudaFree(hf17lengths); 
 }
 
 void JPEGParser::write() {
