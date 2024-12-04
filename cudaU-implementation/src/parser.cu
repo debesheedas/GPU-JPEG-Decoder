@@ -47,10 +47,8 @@ JPEGParser::JPEGParser(std::string& imagePath) {
     initializeIDCTTableKernel<<<blockSize, gridSize>>>(idctTable, 64);
 }
 
+/* Function to allocate the GPU space. */
 void JPEGParser::move() {
-    // allocate all GPU space required here.
-    //copy whatever data possible to copy at this point  
-    // Copy the Huffman Loookup Tables here
     cudaMalloc((uint16_t**)&this->hf0codes, 256 * sizeof(uint16_t));
     cudaMalloc((uint16_t**)&this->hf1codes, 256 * sizeof(uint16_t));
     cudaMalloc((uint16_t**)&this->hf16codes, 256 * sizeof(uint16_t));
@@ -199,7 +197,6 @@ __device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huf
         if (huff_bits[i] > 0 && huff_bits[i] <= 16) { // Valid bit length
             unsigned int mask = (1 << huff_bits[i]) - 1;
             if ((extracted_bits >> (16 - huff_bits[i]) & mask) == huff_codes[i]) {
-                // return i; // Return the index of the matched Huffman code
                 code = i;
                 length = huff_bits[i];
                 return;
@@ -269,6 +266,29 @@ JPEGParser::~JPEGParser() {
     delete this->imageData;
 }
 
+__device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y,
+                                       uint8_t* quant1, uint8_t* quant2,
+                                       uint16_t* hf0codes, int* hf0lengths, uint16_t* hf16codes, int* hf16lengths,
+                                       uint16_t* hf1codes, int* hf1lengths, uint16_t* hf17codes, int* hf17lengths,
+                                       int yBlocks, int xBlocks) {
+    int* curLuminous = arr_l;
+    int* curChromRed = arr_r;
+    int* curChromYel = arr_y;
+    int oldLumCoeff = 0, oldCbdCoeff = 0, oldCrdCoeff = 0;
+    int bitOffset = 0;
+
+    for (int y = 0; y < yBlocks; y++) {
+        for (int x = 0; x < xBlocks; x++) {
+            bitOffset = buildMCU(curLuminous, imageData, bitOffset, quant1, oldLumCoeff, hf0codes, hf0lengths, hf16codes, hf16lengths);
+            bitOffset = buildMCU(curChromRed, imageData, bitOffset, quant2, oldCbdCoeff, hf1codes, hf1lengths, hf17codes, hf17lengths);
+            bitOffset = buildMCU(curChromYel, imageData, bitOffset, quant2, oldCrdCoeff, hf1codes, hf1lengths, hf17codes, hf17lengths);
+            curLuminous += 64;
+            curChromRed += 64;
+            curChromYel += 64;
+        }
+    }
+}
+
 __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, 
                                 int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
                                 int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
@@ -280,24 +300,9 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     int totalPixels = width * height;
 
     if (threadId==0) {
-        // printf("Thread %d:\n", globalIndex);
-        int *curLuminous = arr_l;
-        int *curChromRed = arr_r;
-        int *curChromYel = arr_y;
-        int oldLumCoeff = 0;
-        int oldCbdCoeff = 0;
-        int oldCrdCoeff = 0;
-        int bitOffset = 0;
-        for (int y = 0; y < yBlocks; y++) {
-            for (int x = 0; x < xBlocks; x++) {
-                bitOffset = buildMCU(curLuminous, imageData, bitOffset, quant1, oldLumCoeff, hf0codes, hf0lengths, hf16codes, hf16lengths);
-                bitOffset = buildMCU(curChromRed, imageData, bitOffset, quant2, oldCbdCoeff, hf1codes, hf1lengths, hf17codes, hf17lengths);
-                bitOffset = buildMCU(curChromYel, imageData, bitOffset, quant2, oldCrdCoeff, hf1codes, hf1lengths, hf17codes, hf17lengths);
-                curLuminous += 64;
-                curChromRed += 64;
-                curChromYel += 64;
-            }
-        }
+        performHuffmanDecoding(imageData, arr_l, arr_r, arr_y, quant1, quant2, 
+                               hf0codes, hf0lengths, hf16codes, hf16lengths, 
+                               hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
     }
     __syncthreads();
 
