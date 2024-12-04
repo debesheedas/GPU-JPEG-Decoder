@@ -289,6 +289,38 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_
     }
 }
 
+__device__ void performColorConversion(int* arr_l, int* arr_r, int* arr_y,
+                                       int* redOutput, int* greenOutput, int* blueOutput,
+                                       int totalPixels, int width, int threadId, int blockDimGridDim) {
+    for (int i = threadId; i < totalPixels; i += blockDimGridDim) {
+        int blockId = i / 64;
+        int blockRow = blockId / (width / 8);
+        int blockColumn = blockId % (width / 8);
+
+        int rowStart = blockRow * 8;
+        int columnStart = blockColumn * 8;
+
+        int pixelIndexInBlock = i % 64;
+        int rowInBlock = pixelIndexInBlock / 8;
+        int columnInBlock = pixelIndexInBlock % 8;
+
+        int globalRow = rowStart + rowInBlock;
+        int globalColumn = columnStart + columnInBlock;
+
+        int actualIndex = globalRow * width + globalColumn;
+
+        // Retrieve pixel data and perform the color conversion
+        float red = arr_y[i] * (2 - 2 * 0.299) + arr_l[i];
+        float blue = arr_r[i] * (2 - 2 * 0.114) + arr_l[i];
+        float green = (arr_l[i] - 0.114 * blue - 0.299 * red) / 0.587;
+
+        // Clamp values to [0, 255]
+        redOutput[actualIndex] = min(max(static_cast<int>(red + 128), 0), 255);
+        greenOutput[actualIndex] = min(max(static_cast<int>(green + 128), 0), 255);
+        blueOutput[actualIndex] = min(max(static_cast<int>(blue + 128), 0), 255);
+    }
+}
+
 __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, 
                                 int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
                                 int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
@@ -347,37 +379,8 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     __syncthreads();
 
     // Iterate over pixels handled by this thread
-    for (int i = threadId; i < totalPixels; i += blockDim.x * gridDim.x) {
-        int blockId = i / 64;
-        int blockRow = blockId / xBlocks;
-        int blockColumn = blockId % xBlocks;
-
-        int rowStart = blockRow * 8;
-        int columnStart = blockColumn * 8;
-
-        int pixelIndexInBlock = i % 64;
-        int rowInBlock = pixelIndexInBlock / 8;
-        int columnInBlock = pixelIndexInBlock % 8;
-
-        int globalRow = rowStart + rowInBlock;
-        int globalColumn = columnStart + columnInBlock;
-
-        int actualIndex = globalRow * width + globalColumn;
-
-        // Retrieve pixel data and perform the color conversion
-        float red = arr_y[i] * (2 - 2 * 0.299) + arr_l[i];
-        float blue = arr_r[i] * (2 - 2 * 0.114) + arr_l[i];
-        float green = (arr_l[i] - 0.114 * blue - 0.299 * red) / 0.587;
-
-        // Clamp values to [0, 255]
-        int castedRed = static_cast<int>(red + 128);
-        int castedGreen = static_cast<int>(green + 128);
-        int castedBlue = static_cast<int>(blue + 128);
-
-        redOutput[actualIndex] = min(max(castedRed, 0), 255);
-        greenOutput[actualIndex] = min(max(castedGreen, 0), 255);
-        blueOutput[actualIndex] = min(max(castedBlue, 0), 255);
-    }
+    performColorConversion(arr_l, arr_r, arr_y, redOutput, greenOutput, blueOutput, 
+                           totalPixels, width, threadId, blockDim.x * gridDim.x);
 }
 
 void JPEGParser::decode() {
