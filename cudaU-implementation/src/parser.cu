@@ -275,18 +275,11 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
                                 uint16_t* hf0codes, uint16_t* hf1codes, uint16_t* hf16codes, uint16_t* hf17codes,
                                 int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths) {
 
-    int globalBlockIndex = blockIdx.y * gridDim.x + blockIdx.x;
-    int blockStart = globalBlockIndex * 64;
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    int pixelIndex = threadId;
+    int totalPixels = width * height;
 
-    // Identify the thread's position in the 8x8 grid
-    int threadRow = threadIdx.y; // Row index (0-7)
-    int threadCol = threadIdx.x; // Column index (0-7)
-    int threadIndexInBlock = threadRow * 8 + threadCol; // Flattened index
-
-    // Calculate the global index for this thread
-    int globalIndex = blockStart + threadIndexInBlock;
-
-    if (globalIndex==0) {
+    if (threadId==0) {
         // printf("Thread %d:\n", globalIndex);
         int *curLuminous = arr_l;
         int *curChromRed = arr_r;
@@ -308,89 +301,77 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     }
     __syncthreads();
 
-    // Shared memory for zigzag arrays
-    __shared__ int sharedZigzag[3 * 64];
-    int* zigzag_l = &sharedZigzag[0];
-    int* zigzag_r = &sharedZigzag[64];
-    int* zigzag_y = &sharedZigzag[128];
+   while (pixelIndex < totalPixels) {
+        int threadIndexInBlock = pixelIndex % 64;
+        int blockIndex = pixelIndex / 64;
+        int localBlockIndex = threadId / 64;
 
-    if (threadCol < validWidth && threadRow < validHeight) {
-        zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
-    } else {
-        zigzag_l[threadIndexInBlock] = 0;
-        zigzag_r[threadIndexInBlock] = 0;
-        zigzag_y[threadIndexInBlock] = 0;
-    }
+        __shared__ int sharedZigzag[3 * 256];
+        int* zigzag_l = &sharedZigzag[0];
+        int* zigzag_r = &sharedZigzag[256];
+        int* zigzag_y = &sharedZigzag[512];
 
-    __syncthreads();
-    
-    if (globalIndex == 0) {
-        printf("--------");
-        for (int i = 0; i < 64; i++) {
-            printf("zigzag %d, %d, %d", zigzag_l[i], zigzag_r[i], zigzag_y[i]);
-        }
-    }
+        zigzag_l[threadId] = arr_l[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
+        zigzag_r[threadId] = arr_r[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
+        zigzag_y[threadId] = arr_y[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
 
-    if (threadCol < validWidth && threadRow < validHeight) {
+        __syncthreads();
+
+        int threadPos = pixelIndex % 64;
+        int threadRow = threadPos / 8;
+        int threadCol = threadPos % 8;
         double localSum_l = 0.0;
         double localSum_r = 0.0;
         double localSum_y = 0.0;
         for (int u = 0; u < 8; u++) {
             for (int v = 0; v < 8; v++) {
-                localSum_l += zigzag_l[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_r += zigzag_r[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_y += zigzag_y[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_l += zigzag_l[threadId - (threadId % 64) + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_r += zigzag_r[threadId - (threadId % 64) + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+                localSum_y += zigzag_y[threadId - (threadId % 64) + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
             }
         }
 
-        arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0)); //luminuous
-        arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0)); //chromyel
-        arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0)); // chromred
+        arr_l[pixelIndex] = static_cast<int>(std::floor(localSum_l / 4.0));
+        arr_y[pixelIndex] = static_cast<int>(std::floor(localSum_y / 4.0));
+        arr_r[pixelIndex] = static_cast<int>(std::floor(localSum_r / 4.0));
+
+        pixelIndex += blockDim.x * gridDim.x;
+        __syncthreads();
     }
 
     __syncthreads();
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
-    int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
-    int i = y * width + x;
+    // Iterate over pixels handled by this thread
+    for (int i = threadId; i < totalPixels; i += blockDim.x * gridDim.x) {
+        int blockId = i / 64;
+        int blockRow = blockId / xBlocks;
+        int blockColumn = blockId % xBlocks;
 
-    if (x < width && y < height) {
-        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
-        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
+        int rowStart = blockRow * 8;
+        int columnStart = blockColumn * 8;
 
-        float red = arr_y[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + arr_l[blockIndex * 64 + pixelIndexInBlock];
-        float blue = arr_r[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + arr_l[blockIndex * 64 + pixelIndexInBlock];
-        float green = (arr_l[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
+        int pixelIndexInBlock = i % 64;
+        int rowInBlock = pixelIndexInBlock / 8;
+        int columnInBlock = pixelIndexInBlock % 8;
 
+        int globalRow = rowStart + rowInBlock;
+        int globalColumn = columnStart + columnInBlock;
+
+        int actualIndex = globalRow * width + globalColumn;
+
+        // Retrieve pixel data and perform the color conversion
+        float red = arr_y[i] * (2 - 2 * 0.299) + arr_l[i];
+        float blue = arr_r[i] * (2 - 2 * 0.114) + arr_l[i];
+        float green = (arr_l[i] - 0.114 * blue - 0.299 * red) / 0.587;
+
+        // Clamp values to [0, 255]
         int castedRed = static_cast<int>(red + 128);
         int castedGreen = static_cast<int>(green + 128);
         int castedBlue = static_cast<int>(blue + 128);
 
-        if (castedRed > 255) {
-            redOutput[i] = 255;
-        } else if (castedRed < 0) {
-            redOutput[i] = 0;
-        } else {
-            redOutput[i] = castedRed;
-        }
-
-        if (castedGreen > 255) {
-            greenOutput[i] = 255;
-        } else if (castedGreen < 0) {
-            greenOutput[i] = 0;
-        } else {
-            greenOutput[i] = castedGreen;
-        }
-
-        if (castedBlue > 255) {
-            blueOutput[i] = 255;
-        } else if (castedBlue < 0) {
-            blueOutput[i] = 0;
-        } else {
-            blueOutput[i] = castedBlue;
-        }
+        redOutput[actualIndex] = min(max(castedRed, 0), 255);
+        greenOutput[actualIndex] = min(max(castedGreen, 0), 255);
+        blueOutput[actualIndex] = min(max(castedBlue, 0), 255);
     }
 }
 
@@ -398,7 +379,7 @@ void JPEGParser::decode() {
     dim3 blockSize(8, 8);
     dim3 gridSize(this->xBlocks, this->yBlocks);
 
-    decodeKernel<<<gridSize, blockSize>>>(this->imageData, this->luminous, this->chromRed, this->chromYel, idctTable, 8, 8,  
+    decodeKernel<<<1, 256>>>(this->imageData, this->luminous, this->chromRed, this->chromYel, idctTable, 8, 8,  
                                             this->width, this->height, this->xBlocks, this->yBlocks, this->redOutput, this->greenOutput, this->blueOutput,
                                             this->quantTable1, this->quantTable2, this->hf0codes, this->hf1codes, this->hf16codes, this->hf17codes, 
                                             this->hf0lengths, this->hf1lengths, this->hf16lengths, this->hf17lengths);
