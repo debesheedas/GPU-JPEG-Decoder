@@ -289,6 +289,15 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_
     }
 }
 
+__device__ void performZigzagReordering(int* arr_l, int* arr_r, int* arr_y, 
+                                        int* zigzag_l, int* zigzag_r, int* zigzag_y,
+                                        int blockIndex, int threadIndexInBlock, int threadId,
+                                        const int* initialZigzag) {
+    zigzag_l[threadId] = arr_l[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
+    zigzag_r[threadId] = arr_r[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
+    zigzag_y[threadId] = arr_y[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
+}
+
 __device__ void performColorConversion(int* arr_l, int* arr_r, int* arr_y,
                                        int* redOutput, int* greenOutput, int* blueOutput,
                                        int totalPixels, int width, int threadId, int blockDimGridDim) {
@@ -321,6 +330,14 @@ __device__ void performColorConversion(int* arr_l, int* arr_r, int* arr_y,
     }
 }
 
+__device__ void performIDCT(const int* zigzag, double* idctTable, int threadCol, int threadRow, double& localSum, int threshold) {
+    for (int u = 0; u < 8; u++) {
+        for (int v = 0; v < 8; v++) {
+            localSum += zigzag[threshold + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+        }
+    }
+}
+
 __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, 
                                 int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
                                 int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
@@ -348,9 +365,8 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
         int* zigzag_r = &sharedZigzag[256];
         int* zigzag_y = &sharedZigzag[512];
 
-        zigzag_l[threadId] = arr_l[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
-        zigzag_r[threadId] = arr_r[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
-        zigzag_y[threadId] = arr_y[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
+        performZigzagReordering(arr_l, arr_r, arr_y, zigzag_l, zigzag_r, zigzag_y,
+                                blockIndex, threadIndexInBlock, threadId, initialZigzag);
 
         __syncthreads();
 
@@ -360,20 +376,17 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
         double localSum_l = 0.0;
         double localSum_r = 0.0;
         double localSum_y = 0.0;
-        for (int u = 0; u < 8; u++) {
-            for (int v = 0; v < 8; v++) {
-                localSum_l += zigzag_l[threadId - (threadId % 64) + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_r += zigzag_r[threadId - (threadId % 64) + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_y += zigzag_y[threadId - (threadId % 64) + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-            }
-        }
+
+        performIDCT(zigzag_l, idctTable, threadCol, threadRow, localSum_l, threadId - (threadId % 64));
+        performIDCT(zigzag_r, idctTable, threadCol, threadRow, localSum_r, threadId - (threadId % 64));
+        performIDCT(zigzag_y, idctTable, threadCol, threadRow, localSum_y, threadId - (threadId % 64));
+
 
         arr_l[pixelIndex] = static_cast<int>(std::floor(localSum_l / 4.0));
         arr_y[pixelIndex] = static_cast<int>(std::floor(localSum_y / 4.0));
         arr_r[pixelIndex] = static_cast<int>(std::floor(localSum_r / 4.0));
 
         pixelIndex += blockDim.x * gridDim.x;
-        __syncthreads();
     }
 
     __syncthreads();
