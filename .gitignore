@@ -10,3 +10,8 @@ image-data.zip
 */build/
 /benchmarking_dataset
 */images/
+*.array
+*/benchmarking_dataset/build
+*/build
+zune-implementation/benchmark/build/
+zune-implementation/benchmark_throughput/build

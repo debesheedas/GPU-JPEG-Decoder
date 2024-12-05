@@ -6,6 +6,7 @@
 #include <filesystem>
 #include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda-implementation/src/parser.h"
 #include <cuda_runtime.h>
+#include <nvtx3/nvToolsExt.h>
 
 namespace fs = std::filesystem;
 
@@ -35,6 +36,8 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
 
+        nvtxRangePush("Full");
+
         JPEGParser parser(imagePath);
 
         cudaEventRecord(start);
@@ -44,6 +47,8 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
         
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
+        
+        nvtxRangePop();
 
         parser.write();
 

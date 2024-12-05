@@ -76,7 +76,28 @@ This wil configure and build the project and the results will be saved in benchm
 python3 plot_benchmark.py
 
 The result will be saved in benchmark_decoding_time_plot.png
+```
 
+## Analyze GPU operations:
+A simple way of analyzing GPU operations is to use NVIDIA Nsight Systems (NSYS). First, you need to include the header:
+ ```cpp
+ #include <nvtx3/nvToolsExt.h>
+```
+Then, you encapsulate a portion of code you want to analyze:
+ ```cpp
+ nvtxRangePush("Name");
+ //code
+ nvtxRangePop();
+ ```
+ Finally, you run the program as you would do, but append to the beginning:
+```bash
+nsys profile -o out decoder <path to image>
+```
+This will generate the file `out.nsys-rep`. Now, you can either show the analysis in the terminal or save into a csv (more detailed).
+```bash
+nsys stats out.nsys-rep
+nsys stats --report gputrace --format csv,column --output ., out.nsys-rep
+```
 
 ### Contributors:
 1. Debeshee Das

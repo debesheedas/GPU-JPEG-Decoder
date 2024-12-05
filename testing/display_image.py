@@ -26,9 +26,9 @@ def load_and_display_array_image(array_file_path):
     image = cv2.merge([blue_channel, green_channel, red_channel])
 
     cv2.imwrite("image.jpeg",image)
-    cv2.imshow("RGB Image", image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.imshow("RGB Image", image)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Load and display an image from a .array file.")
