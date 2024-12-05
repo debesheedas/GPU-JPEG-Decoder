@@ -3,7 +3,7 @@ import json
 import matplotlib.pyplot as plt
 from collections import defaultdict
 
-versions = ['cpp','cuda', 'cudaunified']
+versions = ['cpp','cuda','cudaunified']
 
 sizes = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
 
