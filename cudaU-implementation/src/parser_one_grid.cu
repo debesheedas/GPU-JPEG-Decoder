@@ -1,7 +1,6 @@
 #include "parser.h"
 
 __constant__ int initialZigzag[64]; 
-__device__ int global_sync_flag;
 
 __global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
 {
@@ -342,138 +341,59 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
                                 uint16_t* hf0codes, uint16_t* hf1codes, uint16_t* hf16codes, uint16_t* hf17codes,
                                 int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths) {
 
-    // Thread and block IDs
-    int threadX = threadIdx.x;
-    int threadY = threadIdx.y;
-    int blockX = blockIdx.x;
-    int blockY = blockIdx.y;
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    int pixelIndex = threadId;
+    int totalPixels = width * height;
 
-    // Serial section - only one thread in one block
-    if (blockX == 0 && blockY == 0 && threadX == 0 && threadY == 0) {
+    if (threadId==0) {
         performHuffmanDecoding(imageData, arr_l, arr_r, arr_y, quant1, quant2, 
                                hf0codes, hf0lengths, hf16codes, hf16lengths, 
-                                hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
-        global_sync_flag = 1; // Mark the serial work as complete
+                               hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
     }
-
-    // Ensure all blocks wait until the serial work is done
-    __shared__ bool is_serial_done; // Shared memory flag for threads in a block
-    if (threadX == 0 && threadY == 0) {
-        // Check global flag in a single thread
-        while (atomicAdd(&global_sync_flag, 0) == 0) {
-            // Spin until the serial section is complete
-        }
-        is_serial_done = true; // Set the shared flag
-    }
-    __syncthreads(); // Synchronize all threads within the block
-
-    // int threadId = blockIdx.x * blockDim.x + threadIdx.x;
-    // int pixelIndex = threadId;
-    // int totalPixels = width * height;
-
-    // if (threadId==0) {
-    //     performHuffmanDecoding(imageData, arr_l, arr_r, arr_y, quant1, quant2, 
-    //                            hf0codes, hf0lengths, hf16codes, hf16lengths, 
-    //                            hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
-    // }
-    // __syncthreads();
-
-   // Shared memory for zigzag arrays
-    __shared__ int sharedZigzag[3 * 64];
-    int* zigzag_l = &sharedZigzag[0];
-    int* zigzag_r = &sharedZigzag[64];
-    int* zigzag_y = &sharedZigzag[128];
-
-    int globalBlockIndex = blockIdx.y * gridDim.x + blockIdx.x;
-    int blockStart = globalBlockIndex * 64;
-
-    // Identify the thread's position in the 8x8 grid
-    int threadRow = threadIdx.y; // Row index (0-7)
-    int threadCol = threadIdx.x; // Column index (0-7)
-    int threadIndexInBlock = threadRow * 8 + threadCol; // Flattened index
-
-    // Calculate the global index for this thread
-    int globalIndex = blockStart + threadIndexInBlock;
-
-    if (threadCol < validWidth && threadRow < validHeight) {
-        zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
-    } else {
-        zigzag_l[threadIndexInBlock] = 0;
-        zigzag_r[threadIndexInBlock] = 0;
-        zigzag_y[threadIndexInBlock] = 0;
-    }
-
     __syncthreads();
 
-    if (threadCol < validWidth && threadRow < validHeight) {
+   while (pixelIndex < totalPixels) {
+        int threadIndexInBlock = pixelIndex % 64;
+        int blockIndex = pixelIndex / 64;
+
+        __shared__ int sharedZigzag[3 * 256];
+        int* zigzag_l = &sharedZigzag[0];
+        int* zigzag_r = &sharedZigzag[256];
+        int* zigzag_y = &sharedZigzag[512];
+
+        performZigzagReordering(arr_l, arr_r, arr_y, zigzag_l, zigzag_r, zigzag_y,
+                                blockIndex, threadIndexInBlock, threadId, initialZigzag);
+
+        __syncthreads();
+
+        int threadPos = pixelIndex % 64;
+        int threadRow = threadPos / 8;
+        int threadCol = threadPos % 8;
         double localSum_l = 0.0;
         double localSum_r = 0.0;
         double localSum_y = 0.0;
-        for (int u = 0; u < 8; u++) {
-            for (int v = 0; v < 8; v++) {
-                localSum_l += zigzag_l[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_r += zigzag_r[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_y += zigzag_y[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-            }
-        }
 
-        arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0)); //luminuous
-        arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0)); //chromyel
-        arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0)); // chromred
+        performIDCT(zigzag_l, idctTable, threadCol, threadRow, localSum_l, threadId - (threadId % 64));
+        performIDCT(zigzag_r, idctTable, threadCol, threadRow, localSum_r, threadId - (threadId % 64));
+        performIDCT(zigzag_y, idctTable, threadCol, threadRow, localSum_y, threadId - (threadId % 64));
+
+
+        arr_l[pixelIndex] = static_cast<int>(std::floor(localSum_l / 4.0));
+        arr_y[pixelIndex] = static_cast<int>(std::floor(localSum_y / 4.0));
+        arr_r[pixelIndex] = static_cast<int>(std::floor(localSum_r / 4.0));
+
+        pixelIndex += blockDim.x * gridDim.x;
     }
 
     __syncthreads();
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
-    int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
-    int i = y * width + x;
-
-    if (x < width && y < height) {
-        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
-        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
-
-        float red = arr_y[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + arr_l[blockIndex * 64 + pixelIndexInBlock];
-        float blue = arr_r[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + arr_l[blockIndex * 64 + pixelIndexInBlock];
-        float green = (arr_l[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
-
-        int castedRed = static_cast<int>(red + 128);
-        int castedGreen = static_cast<int>(green + 128);
-        int castedBlue = static_cast<int>(blue + 128);
-
-        if (castedRed > 255) {
-            redOutput[i] = 255;
-        } else if (castedRed < 0) {
-            redOutput[i] = 0;
-        } else {
-            redOutput[i] = castedRed;
-        }
-
-        if (castedGreen > 255) {
-            greenOutput[i] = 255;
-        } else if (castedGreen < 0) {
-            greenOutput[i] = 0;
-        } else {
-            greenOutput[i] = castedGreen;
-        }
-
-        if (castedBlue > 255) {
-            blueOutput[i] = 255;
-        } else if (castedBlue < 0) {
-            blueOutput[i] = 0;
-        } else {
-            blueOutput[i] = castedBlue;
-        }
-    }
+    // Iterate over pixels handled by this thread
+    performColorConversion(arr_l, arr_r, arr_y, redOutput, greenOutput, blueOutput, 
+                           totalPixels, width, threadId, blockDim.x * gridDim.x);
 }
 
 void JPEGParser::decode() {
-    dim3 blockSize(8, 8);
-    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
-    size_t channelSize = width * height * sizeof(int);
-
-    decodeKernel<<<gridSize, blockSize>>>(this->imageData, this->luminous, this->chromRed, this->chromYel, idctTable, 8, 8,  
+    decodeKernel<<<1, 256>>>(this->imageData, this->luminous, this->chromRed, this->chromYel, idctTable, 8, 8,  
                                             this->width, this->height, this->xBlocks, this->yBlocks, this->redOutput, this->greenOutput, this->blueOutput,
                                             this->quantTable1, this->quantTable2, this->hf0codes, this->hf1codes, this->hf16codes, this->hf17codes, 
                                             this->hf0lengths, this->hf1lengths, this->hf16lengths, this->hf17lengths);
