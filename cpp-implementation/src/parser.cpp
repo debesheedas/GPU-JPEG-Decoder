@@ -133,16 +133,13 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
         }
     }
 
-    // Create and process the IDCT for this block with the valid dimensions
-    IDCT* idct = new IDCT(arr);
-    idct->rearrangeUsingZigzag(validWidth, validHeight);
-    idct->performIDCT(validWidth, validHeight);
-    arr.assign(idct->base.begin(), idct->base.end());
+    // Apply IDCT on the block
+    IDCT idct(arr); // Create the IDCT instance
+    idct.performIDCT(); // Perform the IDCT using the updated fast integer implementation
+    arr = idct.base; // Retrieve the transformed block as the new MCU values
 
-    // Update oldCoeff for the next MCU
+    // Step 5: Update the old DC coefficient for the next block
     oldCoeff = dcCoeff;
-
-    delete idct;
 }
 
 void JPEGParser::decode() {

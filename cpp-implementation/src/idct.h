@@ -1,23 +1,17 @@
-#pragma
-
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
-const int IDCT_PRECISION = 8;
-
-/*
-    The class representing the Inverse Discrete Cosine Transform.
-*/
 class IDCT {
-    private:
-        std::vector<std::vector<int>> zigzag;
+private:
+    int zigzag[8][8];
+    void idct1D(std::vector<int>& data);
+    void idct2D(std::vector<std::vector<int>>& block);
 
-    public:
-        IDCT(std::vector<int>& base);
-        std::vector<std::vector<double>> idctTable;
-        std::vector<int> base;
-        
-        void rearrangeUsingZigzag(int validWidth, int validHeight);
-        void performIDCT(int validWidth, int validHeight);
-        void initializeIDCTTable();
+public:
+    std::vector<int> base;
+    IDCT(std::vector<int>& base);
+    void rearrangeUsingZigzag();
+    void performIDCT();
+
 };

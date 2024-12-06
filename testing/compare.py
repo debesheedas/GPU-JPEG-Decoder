@@ -20,8 +20,8 @@ def test_array_equality(implementation_folder, image_path):
 
     subprocess.run(["./"+decoder_executable, image_path], check=True)
     
-    implementation_type = os.path.basename(implementation_folder).split('-')[0]
-
+    implementation_type = os.path.basename(implementation_folder.strip('/')).split('-')[0]
+    
     image_name = os.path.basename(image_path).replace(".jpg", ".array")
     ground_truth = read_output(os.path.join("./ground_truth/", image_name))
     decoder_output = read_output(os.path.join(implementation_type+"_output_arrays", image_name))
