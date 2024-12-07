@@ -43,7 +43,6 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
 
         cudaEventRecord(start);
 
-        
         parser.decode();
         
         cudaEventRecord(stop);

@@ -3,6 +3,13 @@
 __constant__ int initialZigzag[64]; 
 __device__ int global_sync_flag;
 
+__global__ void myKernel(int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        idx = idx; // Example operation
+    }
+}
+
 __global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -357,13 +364,13 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     }
 
     // Ensure all blocks wait until the serial work is done
-    __shared__ bool is_serial_done; // Shared memory flag for threads in a block
+    // __shared__ bool is_serial_done; // Shared memory flag for threads in a block
     if (threadX == 0 && threadY == 0) {
         // Check global flag in a single thread
         while (atomicAdd(&global_sync_flag, 0) == 0) {
             // Spin until the serial section is complete
         }
-        is_serial_done = true; // Set the shared flag
+        // is_serial_done = true; // Set the shared flag
     }
     __syncthreads(); // Synchronize all threads within the block
 
@@ -471,14 +478,14 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
 void JPEGParser::decode() {
     dim3 blockSize(8, 8);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
-    size_t channelSize = width * height * sizeof(int);
+    // size_t channelSize = width * height * sizeof(int);
 
     decodeKernel<<<gridSize, blockSize>>>(this->imageData, this->luminous, this->chromRed, this->chromYel, idctTable, 8, 8,  
                                             this->width, this->height, this->xBlocks, this->yBlocks, this->redOutput, this->greenOutput, this->blueOutput,
                                             this->quantTable1, this->quantTable2, this->hf0codes, this->hf1codes, this->hf16codes, this->hf17codes, 
                                             this->hf0lengths, this->hf1lengths, this->hf16lengths, this->hf17lengths);
 
-    this->channels = new ImageChannels(this->height * this->width);
+    
 
     if (luminous) cudaFree(luminous);
     if (chromRed) cudaFree(chromRed);
@@ -494,7 +501,7 @@ void JPEGParser::decode() {
 }
 
 void JPEGParser::write() {
-
+    this->channels = new ImageChannels(this->height * this->width);
     size_t channelSize = this->width * this->height * sizeof(int);
     cudaMemcpy(channels->getR().data(), redOutput, channelSize, cudaMemcpyDeviceToHost);
     cudaMemcpy(channels->getG().data(), greenOutput, channelSize, cudaMemcpyDeviceToHost);

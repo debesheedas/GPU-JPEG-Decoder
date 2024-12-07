@@ -3,7 +3,7 @@ import json
 import matplotlib.pyplot as plt
 from collections import defaultdict
 
-versions = ['cpp','cuda','cudaunified']
+versions = ['zune', 'cudaO', 'cudaU']
 
 sizes = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
 
@@ -27,7 +27,7 @@ def readings(json_path):
 
 average_times = {}
 for version in versions:
-    results_json = os.path.join('/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/', version+'-implementation', 'build/benchmark_results.json')
+    results_json = os.path.join('/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/', version+'-implementation', 'benchmark/build/benchmark_results.json')
     average_times[version] = readings(results_json)
     print(average_times[version])
 

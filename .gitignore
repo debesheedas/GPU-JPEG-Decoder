@@ -15,3 +15,7 @@ image-data.zip
 */build
 zune-implementation/benchmark/build/
 zune-implementation/benchmark_throughput/build
+cuda-implementation/benchmark/build/*
+cudaO-implementation/benchmark/build/*
+cudaU-implementation/benchmark/build/*
+cudaU-implementation/benchmark_thoughput/build/*
