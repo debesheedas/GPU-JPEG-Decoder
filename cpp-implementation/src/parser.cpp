@@ -102,7 +102,7 @@ void JPEGParser::extract() {
     delete stream;
 }
 
-void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldCoeff, int validWidth = 8, int validHeight = 8) {
+void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, int quant, int& oldCoeff) {
     uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
     uint16_t bits = imageStream->getNBits(code);
     int decoded = Stream::decodeNumber(code, bits);
@@ -133,13 +133,11 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
         }
     }
 
-    // Apply IDCT on the block
     IDCT idct(arr); // Create the IDCT instance
-    idct.rearrangeUsingZigzag(8, 8);
-    idct.performIDCT(8, 8); // Perform the IDCT using the updated fast integer implementation
-    arr = idct.base; // Retrieve the transformed block as the new MCU values
+    idct.rearrangeUsingZigzag();
+    idct.performIDCT();
+    arr = idct.base;
 
-    // Step 5: Update the old DC coefficient for the next block
     oldCoeff = dcCoeff;
 }
 
@@ -162,13 +160,9 @@ void JPEGParser::decode() {
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            // Determine the valid width and height for this block to account for padding
-            int blockWidth = (x == xBlocks - 1 && paddedWidth != this->width) ? this->width % 8 : 8;
-            int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
-
-            this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff, blockWidth, blockHeight);
-            this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff, blockWidth, blockHeight);
-            this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff, blockWidth, blockHeight);
+            this->buildMCU(luminous[x][y], imageStream, 0, 0, oldLumCoeff);
+            this->buildMCU(chromRed[x][y], imageStream, 1, 1, oldCbdCoeff);
+            this->buildMCU(chromYel[x][y], imageStream, 1, 1, oldCrdCoeff);
         }
     }
 

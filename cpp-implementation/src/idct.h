@@ -1,8 +1,4 @@
-#pragma once
-
 #include <vector>
-#include <cmath>
-#include <algorithm>
 
 const int IDCT_PRECISION = 8;
 const int C1 = 2841; // 2048*sqrt(2)*cos(1*pi/16)
@@ -15,6 +11,7 @@ const int C7 = 565;  // 2048*sqrt(2)*cos(7*pi/16)
 class IDCT {
 private:
     std::vector<std::vector<int>> zigzag;
+
     int clip(int value);
     void idctRow(int* blk);
     void idctCol(int* blk);
@@ -22,6 +19,6 @@ public:
     std::vector<int> base;
 
     IDCT(std::vector<int>& base);
-    void rearrangeUsingZigzag(int validWidth, int validHeight);
-    void performIDCT(int validWidth, int validHeight);
+    void rearrangeUsingZigzag();
+    void performIDCT();
 };

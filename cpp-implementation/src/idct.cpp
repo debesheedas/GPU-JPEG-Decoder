@@ -1,7 +1,7 @@
 #ifndef IDCT_H
 #define IDCT_H
 
-#include <iostream>
+#include <algorithm>
 #include "idct.h"
 
 IDCT::IDCT(std::vector<int>& base)
@@ -21,10 +21,10 @@ int IDCT::clip(int value) {
         return std::clamp(value, -256, 255);
 }
 
-void IDCT::rearrangeUsingZigzag(int validWidth, int validHeight) {
+void IDCT::rearrangeUsingZigzag() {
     std::vector<int> temp(64, 0);
-    for (int x = 0; x < validWidth; x++) {
-        for (int y = 0; y < validHeight; y++) {
+    for (int x = 0; x < IDCT_PRECISION; x++) {
+        for (int y = 0; y < IDCT_PRECISION; y++) {
             temp[8 * x + y] = base[zigzag[x][y]];
         }
     }
@@ -121,23 +121,14 @@ void IDCT::idctCol(int* block) {
     block[8 * 7] = clip((x7 - x1) >> 14);
 }
 
-void IDCT::performIDCT(int validWidth, int validHeight) {
-    int block[64] = {0};
-
-    for (int i = 0; i < 64; i++) {
-        block[i] = static_cast<int>(base[i]);
-    }
-
+void IDCT::performIDCT() {
+    // Perform IDCT for rows
     for (int i = 0; i < 8; i++) {
-        idctRow(block + 8 * i);
+        idctRow(&base[8 * i]);
     }
-
+    // Perform IDCT for columns
     for (int i = 0; i < 8; i++) {
-        idctCol(block + i);
-    }
-
-    for (int i = 0; i < 64; i++) {
-        base[i] = static_cast<int>(block[i]);
+        idctCol(&base[i]);
     }
 }
 
