@@ -127,47 +127,95 @@ __global__ void processImagesKernel(JPEGParserData* deviceStructs, int numImages
 
 // Benchmark function for throughput measurement
 void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imagePaths) {
-
     size_t numImages = imagePaths.size();
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
-    JPEGParser** jpegParsers = new JPEGParser*[numImages];
-    JPEGParserData* structs = new JPEGParserData[numImages];
-
-    // Create a new JPEGParser object for each image and store the pointer
-    for (size_t i = 0; i < numImages; ++i) {
-        jpegParsers[i] = new JPEGParser(imagePaths[i]);
-        JPEGParser& parser = *jpegParsers[i];
-        parser.extract();
-        structs[i] = copyToStruct(jpegParsers[i]);
-    }
-    JPEGParserData* deviceStructs;
-    cudaMalloc(&deviceStructs, numImages * sizeof(JPEGParserData));
-    cudaMemcpy(deviceStructs, structs, numImages * sizeof(JPEGParserData), cudaMemcpyHostToDevice);
+    // Define batch size (adjust based on available memory)
+    size_t batchSize = 1024; // Example batch size
+    size_t numBatches = (numImages + batchSize - 1) / batchSize;
+    std::cout<< "num batches" << numBatches << "numImages" << numImages << std::endl;
 
     for (auto _ : state) {
-        // Start timer
-        cudaEvent_t start, stop;
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-        cudaEventRecord(start);
+        float totalKernelTime = 0.0f; // Total time across all batches
+        JPEGParser** jpegParsers = new JPEGParser*[batchSize];
+        JPEGParserData* structs = new JPEGParserData[batchSize];
+        JPEGParserData* deviceStructs;
+        cudaMalloc(&deviceStructs, batchSize * sizeof(JPEGParserData));
+        std::cout<<"Allocate Complete"<<std::endl;
 
-        // Launch kernel
-        int threadsPerBlock = 1;
-        int numBlocks = numImages;
-        // processImagesKernel<<<numBlocks, threadsPerBlock>>>(jpegParsers, numImages);
-        processImagesKernel<<<numBlocks, threadsPerBlock>>>(deviceStructs, numImages);
-        cudaDeviceSynchronize();
+        for (size_t batchIdx = 0; batchIdx < numBatches; ++batchIdx) {
+            size_t startIdx = batchIdx * batchSize;
+            size_t endIdx = std::min(startIdx + batchSize, numImages);
+            size_t currentBatchSize = endIdx - startIdx;
 
-        // Stop timer
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
+            // Allocate JPEGParser objects and structs for the current batch
+            // JPEGParser** jpegParsers = new JPEGParser*[currentBatchSize];
+            // JPEGParserData* structs = new JPEGParserData[currentBatchSize];
+            // std::cout << "debug1" <<std::endl;
+            for (size_t i = 0; i < currentBatchSize; ++i) {
+                size_t globalIdx = startIdx + i;
+                // std::cout << "debug2" <<std::endl;
+                jpegParsers[i] = new JPEGParser(imagePaths[globalIdx]);
+                // std::cout << "debug3" <<std::endl;
+                jpegParsers[i]->extract();
+                // std::cout << "debug4" <<std::endl;
+                structs[i] = copyToStruct(jpegParsers[i]);
+                // std::cout << "debug5" <<std::endl;
+            }
+            // std::cout << "debug6" <<std::endl;
+            // Allocate memory for the current batch on the GPU
+            cudaMemcpy(deviceStructs, structs, currentBatchSize * sizeof(JPEGParserData), cudaMemcpyHostToDevice);
+            // std::cout<<"Copy"<<std::endl;
+            // Measure kernel execution time
+            cudaEvent_t batchStart, batchStop;
+            cudaEventCreate(&batchStart);
+            cudaEventCreate(&batchStop);
+
+            cudaEventRecord(batchStart);
+            processImagesKernel<<<currentBatchSize, 1>>>(deviceStructs, currentBatchSize);
+            cudaEventRecord(batchStop);
+            cudaEventSynchronize(batchStop);
+
+            // Calculate time for this batch
+            float milliseconds = 0;
+            cudaEventElapsedTime(&milliseconds, batchStart, batchStop);
+            totalKernelTime += milliseconds;
+
+            // Cleanup for this batch
+            for (size_t i = 0; i < currentBatchSize; ++i) {
+                // if (structs[i].luminous) std::cout<<"lim" << std::endl;
+                if (structs[i].luminous) cudaFree(structs[i].luminous);
+                if (structs[i].chromRed) cudaFree(structs[i].chromRed);
+                if (structs[i].chromYel) cudaFree(structs[i].chromYel);
+                if (structs[i].hf0codes) cudaFree(structs[i].hf0codes);
+                if (structs[i].hf1codes) cudaFree(structs[i].hf1codes);
+                if (structs[i].hf16codes) cudaFree(structs[i].hf16codes);
+                if (structs[i].hf17codes) cudaFree(structs[i].hf17codes);
+                if (structs[i].hf0lengths) cudaFree(structs[i].hf0lengths);
+                if (structs[i].hf1lengths) cudaFree(structs[i].hf1lengths);
+                if (structs[i].hf16lengths) cudaFree(structs[i].hf16lengths);
+                if (structs[i].hf17lengths) cudaFree(structs[i].hf17lengths);
+                // if (structs[i].redOutput) std::cout<<"red" << std::endl;
+                if (structs[i].redOutput) cudaFree(structs[i].redOutput);
+                if (structs[i].greenOutput) cudaFree(structs[i].greenOutput);
+                if (structs[i].blueOutput) cudaFree(structs[i].blueOutput);
+            }
+            cudaFree(deviceStructs);
+            cudaEventDestroy(batchStart);
+            cudaEventDestroy(batchStop);
+            for (size_t i = 0; i < currentBatchSize; ++i) {
+                jpegParsers[i]->~JPEGParser();  // Call the destructor explicitly
+            }
+            // delete[] jpegParsers;
+            // delete[] structs;
+            std::cout<<"Free"<<std::endl;
+        }
+
+        // Convert total kernel time to seconds
+        double seconds = totalKernelTime / 1000.0;
 
         // Calculate throughput
-        double seconds = milliseconds / 1000.0;
-        double throughput = numImages / seconds; // images per second
+        double throughput = numImages / seconds; // Images per second
         double totalBytesProcessed = 0.0;
         for (const auto& path : imagePaths) {
             totalBytesProcessed += fs::file_size(path);  // Calculate total bytes processed
@@ -183,17 +231,13 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
         resultFile << "Throughput: " << throughput << " images/sec, "
                    << "Bytes per second: " << bytesPerSecond / (1024 * 1024) << " MB/sec\n";
     }
+
     resultFile.close();
-    delete[] structs;
-    // for (size_t i = 0; i < numImages; ++i) {
-    //     delete jpegParsers[i]; // Delete each JPEGParser object
-    // }
-    // delete[] jpegParsers;
-    cudaFree(deviceStructs);
 }
 
+
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
 
     std::vector<std::string> imagePaths = getAllImages(datasetPath);
 
@@ -206,7 +250,7 @@ int main(int argc, char** argv) {
         JPEGDecoderBenchmark(state, imagePaths);
     })
     ->Unit(benchmark::kMillisecond)
-    ->Iterations(10);
+    ->Iterations(1);
 
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();

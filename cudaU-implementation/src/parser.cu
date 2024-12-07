@@ -57,6 +57,10 @@ JPEGParser::JPEGParser(std::string& imagePath) {
 
 /* Function to allocate the GPU space. */
 void JPEGParser::move() {
+    cudaError_t err = cudaMalloc((uint16_t**)&this->hf0codes, 256 * sizeof(uint16_t));
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA malloc failed for hf0 codes: " << cudaGetErrorString(err) << std::endl;
+    }
     cudaMalloc((uint16_t**)&this->hf0codes, 256 * sizeof(uint16_t));
     cudaMalloc((uint16_t**)&this->hf1codes, 256 * sizeof(uint16_t));
     cudaMalloc((uint16_t**)&this->hf16codes, 256 * sizeof(uint16_t));
@@ -89,6 +93,9 @@ void JPEGParser::move() {
 void JPEGParser::extract() {        
     uint16_t tableSize = 0;
     uint8_t header = 0;
+    this->quantTable1 = nullptr;
+    this->quantTable2 = nullptr;
+    this->imageData = nullptr;
 
     // Using the Stream class for reading bytes.
     Stream* stream = new Stream(this->readBytes);
@@ -98,30 +105,51 @@ void JPEGParser::extract() {
         if (marker == MARKERS[0]) {
             continue;
         } else if (marker == MARKERS[1]) {
+            
             tableSize = stream->getMarker();
             this->applicationHeader = new uint8_t[(int) tableSize - 2];
             stream->getNBytes(this->applicationHeader, int(tableSize - 2));
+            
         } else if (marker == MARKERS[2]) {
+            
             stream->getMarker();
             uint8_t destination = stream->getByte();
             uint8_t* host_quantTable1 = new uint8_t[64];
             stream->getNBytes(host_quantTable1, 64);
-            cudaMalloc((void**)&this->quantTable1, 64 * sizeof(uint8_t));
-            cudaMemcpy(this->quantTable1, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
-
+            // cudaMalloc((void**)&this->quantTable1, 64 * sizeof(uint8_t));
+            cudaError_t err = cudaMalloc((void**)&this->quantTable1, 64 * sizeof(uint8_t));
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA malloc failed for quantTable1: " << cudaGetErrorString(err) << std::endl;
+            }
+            err = cudaMemcpy(this->quantTable1, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA memcpy failed for quantTable1: " << cudaGetErrorString(err) << std::endl;
+            }
+            // cudaMemcpy(this->quantTable1, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
+            
             if(stream->getMarker() == MARKERS[2]) {
                 stream->getMarker();
                 destination = stream->getByte();
                 this->quantTable2 = new uint8_t[64];
                 uint8_t* host_quantTable2 = new uint8_t[64];
                 stream->getNBytes(host_quantTable2, 64);
-                cudaMalloc((void**)&this->quantTable2, 64 * sizeof(uint8_t));
-                cudaMemcpy(this->quantTable2, host_quantTable2, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
+                // cudaMalloc((void**)&this->quantTable2, 64 * sizeof(uint8_t));
+                err = cudaMalloc((void**)&this->quantTable2, 64 * sizeof(uint8_t));
+                if (err != cudaSuccess) {
+                    std::cerr << "CUDA malloc failed for quantTable2: " << cudaGetErrorString(err) << std::endl;
+                }
+                // cudaMemcpy(this->quantTable2, host_quantTable2, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
+                err = cudaMemcpy(this->quantTable2, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
+                if (err != cudaSuccess) {
+                    std::cerr << "CUDA memcpy failed for quantTable1: " << cudaGetErrorString(err) << std::endl;
+                }
                 
             } else {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
+            
         } else if (marker == MARKERS[3]) {
+            
             tableSize = stream->getMarker();
             this->startOfFrame = new uint8_t[(int) tableSize - 2];
             stream->getNBytes(this->startOfFrame, (int) tableSize - 2);
@@ -134,8 +162,10 @@ void JPEGParser::extract() {
             this->xBlocks = this->paddedWidth / 8;
             this->yBlocks = this->paddedHeight / 8;
             delete frame;
+            
 
         } else if (marker == MARKERS[4]) {
+            
             tableSize = stream->getMarker();
             header = stream->getByte();
             this->huffmanTable1 = new uint8_t[(int) tableSize - 3];
@@ -165,8 +195,9 @@ void JPEGParser::extract() {
                 stream->getNBytes(this->huffmanTable4, (int) tableSize - 3);
                 this->huffmanTrees[header] = new HuffmanTree(this->huffmanTable4);
             }
-
+            
         } else if (marker == MARKERS[5]) {
+            // std::cout <<"before" << std::endl;
             tableSize = stream->getMarker();
             this->startOfScan = new uint8_t[(int) tableSize - 2];
             stream->getNBytes(this->startOfScan, (int) tableSize - 2);
@@ -189,13 +220,24 @@ void JPEGParser::extract() {
             }
             
             imageDataLength--; // We remove the ending byte because it is extra 0xff.
-            cudaMalloc((void**)&this->imageData, imageDataLength * sizeof(uint8_t));
-            cudaMemcpy(this->imageData, host_imageData, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
+            // cudaMalloc((void**)&this->imageData, imageDataLength * sizeof(uint8_t));
+            cudaError_t err = cudaMalloc((void**)&this->imageData, imageDataLength * sizeof(uint8_t));
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA malloc failed for imageData: " << cudaGetErrorString(err) << std::endl;
+            }
+            err = cudaMemcpy(this->imageData, host_imageData, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA memcpy failed for imageData: " << cudaGetErrorString(err) << std::endl;
+            }
+            // cudaMemcpy(this->imageData, host_imageData, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
             break;
         }
+        // std::cout <<"after" << std::endl;
     } 
+    
     delete stream;  
     move(); 
+   
 }
 
 __device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length) {
@@ -253,22 +295,37 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
 }
 
 JPEGParser::~JPEGParser() {
-    cudaFree(idctTable);
-    delete channels;
+    // std::cout << "destructor1" << std::endl;
+    if (idctTable) cudaFree(idctTable);
+    // std::cout << "destructor2" << std::endl;
+    // if (channels) delete channels;
+    // std::cout << "destructor3" << std::endl;
     for (auto& tree : huffmanTrees) {
-        delete tree.second;
+       if (tree.second) delete tree.second;
     }
-    cudaFree(this->quantTable1);
-    cudaFree(this->quantTable2);
-    cudaFree(this->imageData);
-    delete[]  this->readBytes;
-    delete[]  this->applicationHeader;
-    delete[]  this->startOfFrame;
-    delete[]  this->startOfScan;
-    delete[]  this->huffmanTable1;
-    delete[]  this->huffmanTable2;
-    delete[]  this->huffmanTable3;
-    delete[]  this->huffmanTable4;
+    // std::cout << "destructor4" << std::endl;
+    if (quantTable1) cudaFree(this->quantTable1);
+    // std::cout << "destructor5" << std::endl;
+    if (quantTable2) cudaFree(this->quantTable2);
+    // std::cout << "destructor6" << std::endl;
+    if (imageData) cudaFree(this->imageData);
+    // std::cout << "destructor7" << std::endl;
+    if (readBytes) delete[] this->readBytes;
+    // std::cout << "destructor8" << std::endl;
+    if (applicationHeader) delete[] this->applicationHeader;
+    // std::cout << "destructor9" << std::endl;
+    if (startOfFrame) delete[] this->startOfFrame;
+    // std::cout << "destructor10" << std::endl;
+    if (startOfScan) delete[] this->startOfScan;
+    // std::cout << "destructor11" << std::endl;
+    if (huffmanTable1) delete[] this->huffmanTable1;
+    // std::cout << "destructor12" << std::endl;
+    if (huffmanTable2) delete[] this->huffmanTable2;
+    // std::cout << "destructor13" << std::endl;
+    if (huffmanTable3) delete[] this->huffmanTable3;
+    // std::cout << "destructor14" << std::endl;
+    if (huffmanTable4) delete[] this->huffmanTable4;
+    // std::cout << "destructor15" << std::endl;
 }
 
 __device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y,
