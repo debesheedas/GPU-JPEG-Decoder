@@ -4,9 +4,10 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/src/parser.h"
 
 namespace fs = std::filesystem;
+
+std::string path_to_decoder = "/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/jpeglib-implementation/libjpeg_install/build/djpeg";
 
 // Function to get all images with a specified size
 std::vector<std::string> getImagesBySize(const std::string& datasetPath, int size) {
@@ -27,14 +28,14 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
     
     for (auto _ : state) {
-        // reading of jpeg here
-        JPEGParser parser(imagePath);
         auto start_time = std::chrono::high_resolution_clock::now();
-        parser.extract();
-        parser.decode();
+        std::string command = path_to_decoder + " " + imagePath;
+        int ret_code = system(command.c_str());
+        if (ret_code != 0) {
+            throw std::runtime_error("Command execution failed with code: " + std::to_string(ret_code));
+        }
+
         auto end_time = std::chrono::high_resolution_clock::now();
-        parser.write();
-        // writing of output file here
         std::chrono::duration<double> decode_duration = end_time - start_time;
         state.SetIterationTime(decode_duration.count());
         resultFile << imagePath << " " << decode_duration.count() * 1000 << "\n";  // time in ms
