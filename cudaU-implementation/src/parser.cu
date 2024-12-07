@@ -126,7 +126,8 @@ void JPEGParser::extract() {
                 std::cerr << "CUDA memcpy failed for quantTable1: " << cudaGetErrorString(err) << std::endl;
             }
             // cudaMemcpy(this->quantTable1, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
-            
+            delete host_quantTable1;
+
             if(stream->getMarker() == MARKERS[2]) {
                 stream->getMarker();
                 destination = stream->getByte();
@@ -139,10 +140,11 @@ void JPEGParser::extract() {
                     std::cerr << "CUDA malloc failed for quantTable2: " << cudaGetErrorString(err) << std::endl;
                 }
                 // cudaMemcpy(this->quantTable2, host_quantTable2, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
-                err = cudaMemcpy(this->quantTable2, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
+                err = cudaMemcpy(this->quantTable2, host_quantTable2, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
                 if (err != cudaSuccess) {
-                    std::cerr << "CUDA memcpy failed for quantTable1: " << cudaGetErrorString(err) << std::endl;
+                    std::cerr << "CUDA memcpy failed for quantTable2: " << cudaGetErrorString(err) << std::endl;
                 }
+                delete host_quantTable2;
                 
             } else {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
@@ -230,6 +232,7 @@ void JPEGParser::extract() {
                 std::cerr << "CUDA memcpy failed for imageData: " << cudaGetErrorString(err) << std::endl;
             }
             // cudaMemcpy(this->imageData, host_imageData, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
+            delete host_imageData;
             break;
         }
         // std::cout <<"after" << std::endl;
@@ -579,4 +582,5 @@ void JPEGParser::write() {
     outfile << std::endl;
     std::copy(this->channels->getB().begin(), this->channels->getB().end(), std::ostream_iterator<int>(outfile, " "));
     outfile.close();
+    delete channels;
 }

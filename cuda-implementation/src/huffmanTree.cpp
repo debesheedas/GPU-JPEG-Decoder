@@ -51,6 +51,8 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
         if (i == 0) {
             if (root->left == NULL) {
                 root->left = internalNode;
+            } else {
+                delete internalNode;
             }
             if (this->addToTree(root->left, node, position-1)) {
                 return true;
@@ -58,6 +60,8 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
         } else {
             if (root->right == NULL) {
                 root->right = internalNode;
+            } else {
+                delete internalNode;
             }
             if (this->addToTree(root->right, node, position - 1)) {
                 return true;
@@ -102,6 +106,8 @@ void HuffmanTree::clearTree(HuffmanTreeNode* node) {
 
     clearTree(node->left);
     clearTree(node->right);
+    // delete node->left;
+    // delete node->right;
     delete node;
 }
 

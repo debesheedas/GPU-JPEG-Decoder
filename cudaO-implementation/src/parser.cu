@@ -424,7 +424,7 @@ void JPEGParser::write() {
     cudaFree(blueOutput);
 
     // Writing the decoded channels to a file instead of displaying using opencv
-    fs::path output_dir = "../testing/cudaU_output_arrays"; // Change the directory name here for future CUDA implementations
+    fs::path output_dir = "../testing/cudaO_output_arrays"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / this->filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);

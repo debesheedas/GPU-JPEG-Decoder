@@ -18,6 +18,8 @@ HuffmanTree::HuffmanTree(uint8_t* bytes) {
 
 HuffmanTree::~HuffmanTree() {
     clearTree(this->root);
+    delete[] codes;
+    delete[] codeLengths;
 }
 
 // Creates the nodes for the characters.
@@ -72,6 +74,8 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
         if (i == 0) {
             if (root->left == NULL) {
                 root->left = internalNode;
+            } else {
+                delete internalNode;
             }
             if (this->addToTree(root->left, node, position-1)) {
                 return true;
@@ -79,6 +83,8 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
         } else {
             if (root->right == NULL) {
                 root->right = internalNode;
+            } else {
+                delete internalNode;
             }
             if (this->addToTree(root->right, node, position - 1)) {
                 return true;

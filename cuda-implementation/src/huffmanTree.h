@@ -24,6 +24,11 @@ struct HuffmanTreeNode {
         this->left = NULL;
         this->right = NULL;
     }
+
+    // ~HuffmanTreeNode() {
+    //     delete left;
+    //     delete right;
+    // }
 };
 
 /*

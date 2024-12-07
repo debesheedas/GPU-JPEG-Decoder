@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <cuda_runtime.h>
 #include <nvtx3/nvToolsExt.h>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaU-implementation/src/parser.h"
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaO-implementation/src/parser.h"
 
 namespace fs = std::filesystem;
 
@@ -131,7 +131,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
     // Define batch size (adjust based on available memory)
-    size_t batchSize =  512; // Example batch size
+    size_t batchSize = 64; // Example batch size
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
     std::cout<< "num batches" << numBatches << "numImages" << numImages << std::endl;
 
@@ -200,20 +200,17 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 if (structs[i].greenOutput) cudaFree(structs[i].greenOutput);
                 if (structs[i].blueOutput) cudaFree(structs[i].blueOutput);
             }
-            
+            cudaFree(deviceStructs);
             cudaEventDestroy(batchStart);
             cudaEventDestroy(batchStop);
             for (size_t i = 0; i < currentBatchSize; ++i) {
-                // jpegParsers[i]->~JPEGParser();  // Call the destructor explicitly
-                delete jpegParsers[i];
+                jpegParsers[i]->~JPEGParser();  // Call the destructor explicitly
             }
             // delete[] jpegParsers;
             // delete[] structs;
             // std::cout<<"Free"<<std::endl;
         }
-        cudaFree(deviceStructs);
-        delete[] jpegParsers;
-        delete[] structs;
+
         // Convert total kernel time to seconds
         double seconds = totalKernelTime / 1000.0;
 
@@ -234,8 +231,10 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
         resultFile << "Throughput: " << throughput << " images/sec, "
                    << "Bytes per second: " << bytesPerSecond / (1024 * 1024) << " MB/sec\n";
     }
+
     resultFile.close();
 }
+
 
 int main(int argc, char** argv) {
     std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
@@ -251,9 +250,10 @@ int main(int argc, char** argv) {
         JPEGDecoderBenchmark(state, imagePaths);
     })
     ->Unit(benchmark::kMillisecond)
-    ->Iterations(10);
+    ->Iterations(1);
 
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();
+
     return 0;
 }
