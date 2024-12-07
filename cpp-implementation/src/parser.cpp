@@ -135,7 +135,8 @@ void JPEGParser::buildMCU(std::vector<int>& arr, Stream* imageStream, int hf, in
 
     // Apply IDCT on the block
     IDCT idct(arr); // Create the IDCT instance
-    idct.performIDCT(); // Perform the IDCT using the updated fast integer implementation
+    idct.rearrangeUsingZigzag(8, 8);
+    idct.performIDCT(8, 8); // Perform the IDCT using the updated fast integer implementation
     arr = idct.base; // Retrieve the transformed block as the new MCU values
 
     // Step 5: Update the old DC coefficient for the next block
