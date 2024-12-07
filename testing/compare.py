@@ -30,8 +30,9 @@ def test_array_equality(implementation_folder, image_path):
         print("Congratulations! Output matches ground truth!", image_name)
         return True
     else:
-        differences = [(i, ground_truth[1][i], decoder_output[1][i]) for i in range(len(ground_truth[1])) if ground_truth[1][i] != decoder_output[1][i]]
-        print(differences)        
+        differences = [(abs(ground_truth[1][i] - decoder_output[1][i]), ground_truth[1][i], decoder_output[1][i]) for i in range(len(ground_truth[1])) if ground_truth[1][i] != decoder_output[1][i]]
+        abs_diff = [diff[0] for diff in differences]
+        print("Max difference:", max(abs_diff))       
         print("Output does not match the ground truth!", image_name)
     return False
 
