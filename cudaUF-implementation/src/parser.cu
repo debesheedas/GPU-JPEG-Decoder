@@ -188,7 +188,7 @@ void JPEGParser::extract() {
             
             stream->getMarker();
             uint8_t destination = stream->getByte();
-            uint8_t* host_quantTable1 = new uint8_t[64];
+            host_quantTable1 = new uint8_t[64];
             stream->getNBytes(host_quantTable1, 64);
             // cudaMalloc((void**)&this->quantTable1, 64 * sizeof(uint8_t));
             cudaError_t err = cudaMalloc((void**)&this->quantTable1, 64 * sizeof(uint8_t));
@@ -200,13 +200,13 @@ void JPEGParser::extract() {
                 std::cerr << "CUDA memcpy failed for quantTable1: " << cudaGetErrorString(err) << std::endl;
             }
             // cudaMemcpy(this->quantTable1, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
-            delete host_quantTable1;
+            //delete host_quantTable1;
 
             if(stream->getMarker() == MARKERS[2]) {
                 stream->getMarker();
                 destination = stream->getByte();
                 this->quantTable2 = new uint8_t[64];
-                uint8_t* host_quantTable2 = new uint8_t[64];
+                host_quantTable2 = new uint8_t[64];
                 stream->getNBytes(host_quantTable2, 64);
                 // cudaMalloc((void**)&this->quantTable2, 64 * sizeof(uint8_t));
                 err = cudaMalloc((void**)&this->quantTable2, 64 * sizeof(uint8_t));
@@ -218,7 +218,7 @@ void JPEGParser::extract() {
                 if (err != cudaSuccess) {
                     std::cerr << "CUDA memcpy failed for quantTable2: " << cudaGetErrorString(err) << std::endl;
                 }
-                delete host_quantTable2;
+                //delete host_quantTable2;
                 
             } else {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
@@ -279,7 +279,7 @@ void JPEGParser::extract() {
             stream->getNBytes(this->startOfScan, (int) tableSize - 2);
             uint8_t curByte, prevByte = 0x00;
             size_t size = 5 * 1024 * 1024;
-            uint8_t* host_imageData = new uint8_t[size];
+            host_imageData = new uint8_t[size];
             
             while (true) {
                 curByte = stream->getByte();
@@ -306,7 +306,7 @@ void JPEGParser::extract() {
                 std::cerr << "CUDA memcpy failed for imageData: " << cudaGetErrorString(err) << std::endl;
             }
             // cudaMemcpy(this->imageData, host_imageData, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
-            delete host_imageData;
+            //delete host_imageData;
             break;
         }
         // std::cout <<"after" << std::endl;
@@ -371,6 +371,45 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
     return bitOffset;
 }
 
+// int buildMCU2(int* outBuffer, uint8_t* imageData, int bitOffset, uint8_t* quant, 
+//                         int& oldCoeff, uint16_t* dcHfcodes, int* dcHflengths, uint16_t* acHfcodes, int* acHflengths) {
+
+//     int code = 0;
+//     int code_length = 0;
+//     match_huffman_code(imageData, bitOffset, dcHfcodes, dcHflengths, code, code_length);
+//     bitOffset += code_length;
+//     uint16_t bits = getNBits(imageData, bitOffset, code);
+
+//     int decoded = decodeNumber(code, bits); 
+//     int dcCoeff = decoded + oldCoeff;
+//     outBuffer[0] = dcCoeff * (int) quant[0];
+
+//     int length = 1;
+//     while (length < 64) {
+//         match_huffman_code(imageData, bitOffset, acHfcodes, acHflengths, code, code_length);
+//         bitOffset += code_length;
+//         if (code == 0) {
+//             break;
+//         }
+//         // The first part of the AC key length is the number of leading zeros
+//         if (code > 15) {
+//             length += (code >> 4);
+//             code = code & 0x0f;
+//         }
+//         bits = getNBits(imageData, bitOffset, code);
+//         if (length < 64) {
+//             decoded = decodeNumber(code, bits);
+//             int val;
+//             val = decoded * (int) quant[length];
+//             outBuffer[length] = val;
+//             length++;
+//         }
+//     }
+//     // Update oldCoeff for the next MCU
+//     oldCoeff = dcCoeff;
+//     return bitOffset;
+// }
+
 JPEGParser::~JPEGParser() {
     // std::cout << "destructor1" << std::endl;
     if (idctTable) cudaFree(idctTable);
@@ -403,6 +442,10 @@ JPEGParser::~JPEGParser() {
     // std::cout << "destructor14" << std::endl;
     if (huffmanTable4) delete[] this->huffmanTable4;
     // std::cout << "destructor15" << std::endl;
+
+    if (host_imageData) delete[] host_imageData;
+    if (host_quantTable1) delete[] host_quantTable1;
+    if (host_quantTable2) delete[] host_quantTable2;
 }
 
 __device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y,
@@ -428,6 +471,29 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_
     }
 }
 
+//  void performHuffmanDecoding2(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y,
+//                                        uint8_t* quant1, uint8_t* quant2,
+//                                        uint16_t* hf0codes, int* hf0lengths, uint16_t* hf16codes, int* hf16lengths,
+//                                        uint16_t* hf1codes, int* hf1lengths, uint16_t* hf17codes, int* hf17lengths,
+//                                        int yBlocks, int xBlocks) {
+//     int* curLuminous = arr_l;
+//     int* curChromRed = arr_r;
+//     int* curChromYel = arr_y;
+//     int oldLumCoeff = 0, oldCbdCoeff = 0, oldCrdCoeff = 0;
+//     int bitOffset = 0;
+
+//     for (int y = 0; y < yBlocks; y++) {
+//         for (int x = 0; x < xBlocks; x++) {
+//             bitOffset = buildMCU2(curLuminous, imageData, bitOffset, quant1, oldLumCoeff, hf0codes, hf0lengths, hf16codes, hf16lengths);
+//             bitOffset = buildMCU2(curChromRed, imageData, bitOffset, quant2, oldCbdCoeff, hf1codes, hf1lengths, hf17codes, hf17lengths);
+//             bitOffset = buildMCU2(curChromYel, imageData, bitOffset, quant2, oldCrdCoeff, hf1codes, hf1lengths, hf17codes, hf17lengths);
+//             curLuminous += 64;
+//             curChromRed += 64;
+//             curChromYel += 64;
+//         }
+//     }
+// }
+
 __device__ void performZigzagReordering(int* arr_l, int* arr_r, int* arr_y, 
                                         int* zigzag_l, int* zigzag_r, int* zigzag_y,
                                         int blockIndex, int threadIndexInBlock, int threadId,
@@ -439,33 +505,21 @@ __device__ void performZigzagReordering(int* arr_l, int* arr_r, int* arr_y,
 
 __device__ void performColorConversion(int* arr_l, int* arr_r, int* arr_y,
                                        int* redOutput, int* greenOutput, int* blueOutput,
-                                       int totalPixels, int width, int threadId, int blockDimGridDim) {
-    for (int i = threadId; i < totalPixels; i += blockDimGridDim) {
-        int blockId = i / 64;
-        int blockRow = blockId / (width / 8);
-        int blockColumn = blockId % (width / 8);
+                                       int width, int height, int x, int y, int blockIndex, int pixelIndexInBlock ) {
+    int i = y * width + x;
 
-        int rowStart = blockRow * 8;
-        int columnStart = blockColumn * 8;
+    if (x < width && y < height) {
+        float red = arr_y[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + arr_l[blockIndex * 64 + pixelIndexInBlock];
+        float blue = arr_r[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + arr_l[blockIndex * 64 + pixelIndexInBlock];
+        float green = (arr_l[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
 
-        int pixelIndexInBlock = i % 64;
-        int rowInBlock = pixelIndexInBlock / 8;
-        int columnInBlock = pixelIndexInBlock % 8;
+        int castedRed = static_cast<int>(red + 128);
+        int castedGreen = static_cast<int>(green + 128);
+        int castedBlue = static_cast<int>(blue + 128);
 
-        int globalRow = rowStart + rowInBlock;
-        int globalColumn = columnStart + columnInBlock;
-
-        int actualIndex = globalRow * width + globalColumn;
-
-        // Retrieve pixel data and perform the color conversion
-        float red = arr_y[i] * (2 - 2 * 0.299) + arr_l[i];
-        float blue = arr_r[i] * (2 - 2 * 0.114) + arr_l[i];
-        float green = (arr_l[i] - 0.114 * blue - 0.299 * red) / 0.587;
-
-        // Clamp values to [0, 255]
-        redOutput[actualIndex] = min(max(static_cast<int>(red + 128), 0), 255);
-        greenOutput[actualIndex] = min(max(static_cast<int>(green + 128), 0), 255);
-        blueOutput[actualIndex] = min(max(static_cast<int>(blue + 128), 0), 255);
+        redOutput[i] = min(255, max(castedRed, 0));
+        greenOutput[i] = min(255, max(castedGreen, 0));
+        blueOutput[i] = min(255, max(castedBlue, 0));
     }
 }
 
@@ -532,79 +586,39 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     if (threadRow == 0) {
         idctCol(zigzag_l + threadIndexInBlock);
         idctCol(zigzag_r + threadIndexInBlock);
-        idctCol(zigzag_y + threadIndexInBlock);
-        
+        idctCol(zigzag_y + threadIndexInBlock);        
     }
 
     __syncthreads();
+
     arr_l[globalIndex] = zigzag_l[threadIndexInBlock];
     arr_r[globalIndex] = zigzag_r[threadIndexInBlock];
     arr_y[globalIndex] = zigzag_y[threadIndexInBlock];
-    // if (threadCol < validWidth && threadRow < validHeight) {
-    //     double localSum_l = 0.0;
-    //     double localSum_r = 0.0;
-    //     double localSum_y = 0.0;
-    //     for (int u = 0; u < 8; u++) {
-    //         for (int v = 0; v < 8; v++) {
-    //             localSum_l += zigzag_l[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-    //             localSum_r += zigzag_r[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-    //             localSum_y += zigzag_y[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-    //         }
-    //     }
-
-    //     arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0)); //luminuous
-    //     arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0)); //chromyel
-    //     arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0)); // chromred
-    // }
 
     __syncthreads();
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
-    int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
-    int i = y * width + x;
-
-    if (x < width && y < height) {
-        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
-        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
-
-        float red = arr_y[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + arr_l[blockIndex * 64 + pixelIndexInBlock];
-        float blue = arr_r[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + arr_l[blockIndex * 64 + pixelIndexInBlock];
-        float green = (arr_l[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
-
-        int castedRed = static_cast<int>(red + 128);
-        int castedGreen = static_cast<int>(green + 128);
-        int castedBlue = static_cast<int>(blue + 128);
-
-        if (castedRed > 255) {
-            redOutput[i] = 255;
-        } else if (castedRed < 0) {
-            redOutput[i] = 0;
-        } else {
-            redOutput[i] = castedRed;
-        }
-
-        if (castedGreen > 255) {
-            greenOutput[i] = 255;
-        } else if (castedGreen < 0) {
-            greenOutput[i] = 0;
-        } else {
-            greenOutput[i] = castedGreen;
-        }
-
-        if (castedBlue > 255) {
-            blueOutput[i] = 255;
-        } else if (castedBlue < 0) {
-            blueOutput[i] = 0;
-        } else {
-            blueOutput[i] = castedBlue;
-        }
-    }
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    performColorConversion(arr_l, arr_r, arr_y, redOutput, greenOutput, blueOutput, width, height, x, y, (y / 8) * xBlocks + (x / 8),  threadIdx.y * 8 + threadIdx.x);
+    
 }
 
 void JPEGParser::decode() {
     dim3 blockSize(8, 8);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
     // size_t channelSize = width * height * sizeof(int);
+
+    // int *hostLum = new int[width*height];
+    // int *hostRed = new int[width*height];
+    // int *hostYel = new int[width*height];
+
+    // performHuffmanDecoding2(host_imageData, hostLum, hostRed, hostYel, host_quantTable1, host_quantTable2, 
+    //                            this->huffmanTrees[0]->codes, this->huffmanTrees[0]->codeLengths, this->huffmanTrees[16]->codes, this->huffmanTrees[16]->codeLengths, 
+    //                             this->huffmanTrees[1]->codes, this->huffmanTrees[1]->codeLengths, this->huffmanTrees[17]->codes, this->huffmanTrees[17]->codeLengths, yBlocks, xBlocks);
+
+    // cudaMemcpy(this->luminous, hostLum, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
+    // cudaMemcpy(this->chromRed, hostRed, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
+    // cudaMemcpy(this->chromYel, hostYel, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
 
     decodeKernel<<<gridSize, blockSize>>>(this->imageData, this->luminous, this->chromRed, this->chromYel, idctTable, 8, 8,  
                                             this->width, this->height, this->xBlocks, this->yBlocks, this->redOutput, this->greenOutput, this->blueOutput,

@@ -91,6 +91,9 @@ class JPEGParser {
         int *luminous, *chromRed, *chromYel;
         int *redOutput, *greenOutput, *blueOutput;
 
+        uint8_t* host_imageData;
+        uint8_t *host_quantTable1, *host_quantTable2;
+
         // Methods for extracting and building blocks.
         __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8_t* quant, int& oldCoeff, uint16_t* dcHfcodes, int* dcHflengths, uint16_t* acHfcodes, int* acHflengths);
         __device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length);
