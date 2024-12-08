@@ -7,9 +7,12 @@ enable_testing()
 # Add source files for the decoder executable
 add_executable(decoder
     main.cpp
+<<<<<<< HEAD
+=======
     src/parser.cpp
     utils/stream.cpp
     utils/color.cpp
+>>>>>>> origin/main
 )
 
 # Set the path to the locally installed Google Benchmark library
@@ -21,6 +24,12 @@ find_package(benchmark REQUIRED PATHS ${BENCHMARK_ROOT} NO_DEFAULT_PATH)
 # Add the benchmark test executable and its source files
 add_executable(benchmark_test
     benchmark/benchmark.cc
+<<<<<<< HEAD
+)
+
+# Add the src directory to the include path for benchmark_test
+#target_include_directories(benchmark_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+=======
     src/parser.cpp
     utils/stream.cpp
     utils/color.cpp
@@ -28,6 +37,7 @@ add_executable(benchmark_test
 
 # Add the src directory to the include path for benchmark_test
 target_include_directories(benchmark_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+>>>>>>> origin/main
 
 # Link the benchmark library to the benchmark test
 target_link_libraries(benchmark_test benchmark::benchmark)
@@ -36,4 +46,8 @@ target_link_libraries(benchmark_test benchmark::benchmark)
 add_test(NAME benchmark COMMAND benchmark_test)
 
 # Set compiler options for Release configuration if necessary
+<<<<<<< HEAD
 set(CMAKE_BUILD_TYPE Release)
+=======
+set(CMAKE_BUILD_TYPE Release)
+>>>>>>> origin/main

@@ -4,11 +4,16 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
+<<<<<<<< HEAD:jpeglib-implementation/benchmark/benchmark.cc
+========
 #include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda-implementation/src/parser.h"
 #include <cuda_runtime.h>
 #include <nvtx3/nvToolsExt.h>
+>>>>>>>> origin/main:cuda-implementation/benchmark/benchmark.cu
 
 namespace fs = std::filesystem;
+
+std::string path_to_decoder = "/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/jpeglib-implementation/libjpeg_install/build/djpeg";
 
 // Function to get all images with a specified size
 std::vector<std::string> getImagesBySize(const std::string& datasetPath, int size) {
@@ -29,10 +34,19 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
     
     for (auto _ : state) {
-        
-        // Start CUDA timer for GPU-based operations
-        cudaEvent_t start, stop;
+        auto start_time = std::chrono::high_resolution_clock::now();
+        std::string command = path_to_decoder + " " + imagePath;
+        int ret_code = system(command.c_str());
+        if (ret_code != 0) {
+            throw std::runtime_error("Command execution failed with code: " + std::to_string(ret_code));
+        }
 
+<<<<<<<< HEAD:jpeglib-implementation/benchmark/benchmark.cc
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> decode_duration = end_time - start_time;
+        state.SetIterationTime(decode_duration.count());
+        resultFile << imagePath << " " << decode_duration.count() * 1000 << "\n";  // time in ms
+========
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
 
@@ -57,6 +71,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
 
         state.SetIterationTime(milliseconds / 1000.0); // Set iteration time for benchmark
         resultFile << imagePath << " " << milliseconds << "\n"; // Time in milliseconds
+>>>>>>>> origin/main:cuda-implementation/benchmark/benchmark.cu
     }
     
     resultFile.close();
