@@ -1,8 +1,9 @@
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Define benchmark parameters
-versions = ['zune', 'cudaO', 'cudaU', 'cpp', 'jpeglib']
+versions = ['zune', 'cudaO', 'cudaU', 'cudaUF', 'cpp', 'jpeglib']
 base_path = '/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/'
 
 # Function to extract throughput data in MB/sec from the benchmark results text file
@@ -21,8 +22,8 @@ def extract_throughput_mb(file_path):
 # Function to find the TXT file for each version
 def find_txt_file(base_path, version):
     possible_paths = [
-        os.path.join(base_path, version + '-implementation', 'benchmark_thoughput', 'build', 'benchmark_results.txt'),  # Fix for the typo
-        os.path.join(base_path, version + '-implementation', 'benchmark_throughput', 'build', 'benchmark_results.txt')  # Keep original path as fallback
+        os.path.join(base_path, version + '-implementation', 'benchmark_thoughput', 'build', 'benchmark_results.txt'),
+        os.path.join(base_path, version + '-implementation', 'benchmark_throughput', 'build', 'benchmark_results.txt')
     ]
     for path in possible_paths:
         print(f"Checking path: {path}")
@@ -50,6 +51,9 @@ for version in versions:
 # Prepare data for the boxplot
 box_data = [throughput_data[version] for version in versions if version in throughput_data and throughput_data[version]]
 
+# Ensure all versions have at least some range for visibility
+box_data = [data if np.ptp(data) > 0 else [min(data) - 1e-2, max(data) + 1e-2] for data in box_data]
+
 # Check if there's valid data to plot
 if box_data:
     # Create the boxplot
@@ -61,8 +65,14 @@ if box_data:
         boxprops=dict(facecolor="skyblue", color="blue"),
         medianprops=dict(color="red", linewidth=2),
         whiskerprops=dict(color="blue", linewidth=1.5),
-        capprops=dict(color="blue", linewidth=1.5)
+        capprops=dict(color="blue", linewidth=1.5),
+        showfliers=True  # Display outliers
     )
+
+    # Adjust the y-axis to show all values clearly
+    y_min = min(min(data) for data in box_data) * 0.9  # Add 10% padding
+    y_max = max(max(data) for data in box_data) * 1.1
+    plt.ylim(y_min, y_max)
 
     # Set plot labels and title
     plt.title("Throughput Distribution for Various JPEG Decoders", fontsize=14)
