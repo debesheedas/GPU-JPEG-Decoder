@@ -29,7 +29,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
     
     for (auto _ : state) {
         auto start_time = std::chrono::high_resolution_clock::now();
-        std::string command = path_to_decoder + " " + imagePath;
+        std::string command = path_to_decoder + " " + imagePath + "> /dev/null 2>&1";
         int ret_code = system(command.c_str());
         if (ret_code != 0) {
             throw std::runtime_error("Command execution failed with code: " + std::to_string(ret_code));
