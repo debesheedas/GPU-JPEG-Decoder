@@ -22,3 +22,5 @@ cudaO-implementation/benchmark/build/*
 cudaU-implementation/benchmark/build/*
 cudaU-implementation/benchmark_thoughput/build/*
 cudaO-implementation/benchmark_thoughput/build/*
+jpeglib-implementation/benchmark/build/*
+jpeglib-implementation/benchmark_throughput/build/*

@@ -237,7 +237,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
 
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_old";
 
     std::vector<std::string> imagePaths = getAllImages(datasetPath);
 
