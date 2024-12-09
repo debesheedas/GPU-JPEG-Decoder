@@ -7,11 +7,10 @@ images.tar
 /image-data
 image-data.zip
 /Images
-*/build/
 /benchmarking_dataset
 */images/
 *.array
 */benchmarking_dataset/build
-*/build
-zune-implementation/benchmark/build/
-zune-implementation/benchmark_throughput/build
+**/build
+benchmarking_dataset_mini/*
+
