@@ -8,9 +8,9 @@ images.tar
 image-data.zip
 /Images
 /benchmarking_dataset
+/benchmarking_dataset_old
+/benchmarking_dataset_mini
 */images/
 *.array
 */benchmarking_dataset/build
 **/build
-benchmarking_dataset_mini/*
-
