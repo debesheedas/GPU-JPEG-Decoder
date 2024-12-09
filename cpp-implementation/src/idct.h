@@ -13,8 +13,8 @@ private:
     std::vector<std::vector<int>> zigzag;
 
     int clip(int value);
-    void idctRow(int* blk);
-    void idctCol(int* blk);
+    void idctRow(int* block);
+    void idctCol(int* block);
 public:
     std::vector<int> base;
 
