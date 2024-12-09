@@ -2,6 +2,8 @@
 
 __constant__ int initialZigzag[64]; 
 __device__ int global_sync_flag;
+__device__ int counter = 0;
+
 
 __device__ int clip(int value) {
     if (value < -256) return -256;
@@ -343,7 +345,9 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
 
     int decoded = decodeNumber(code, bits); 
     int dcCoeff = decoded + oldCoeff;
-    outBuffer[0] = dcCoeff * (int) quant[0];
+    //outBuffer[0] = dcCoeff * (int) quant[0];
+    // printf("dc %d %d %d\n", dcCoeff, (int) quant[0], dcCoeff * (int) quant[0]);
+    outBuffer[0] = dcCoeff;
 
     int length = 1;
     while (length < 64) {
@@ -362,7 +366,9 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
             decoded = decodeNumber(code, bits);
             int val;
             val = decoded * (int) quant[length];
-            outBuffer[length] = val;
+            //outBuffer[length] = val;
+            outBuffer[length] = decoded;
+            // printf("ac %d %d %d\n", decoded, (int) quant[length], decoded * (int) quant[length]);
             length++;
         }
     }
@@ -489,6 +495,7 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
         global_sync_flag = 1; // Mark the serial work as complete
     }
 
+
     // Ensure all blocks wait until the serial work is done
     if (threadX == 0 && threadY == 0) {
         while (atomicAdd(&global_sync_flag, 0) == 0) {
@@ -496,6 +503,8 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
         }
     }
     __syncthreads(); // Synchronize all threads within the block
+    
+
 
    // Shared memory for zigzag arrays
     __shared__ int sharedZigzag[3 * 64];
@@ -505,6 +514,7 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
 
     int globalBlockIndex = blockIdx.y * gridDim.x + blockIdx.x;
     int blockStart = globalBlockIndex * 64;
+    
 
     // Identify the thread's position in the 8x8 grid
     int threadRow = threadIdx.y; // Row index (0-7)
@@ -514,11 +524,20 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     // Calculate the global index for this thread
     int globalIndex = blockStart + threadIndexInBlock;
 
-    zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
-    zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
-    zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
+    // zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
+    // zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
+    // zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
+
+    zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]] * (int) quant1[initialZigzag[threadIndexInBlock]];
+    zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]] * (int) quant2[initialZigzag[threadIndexInBlock]];
+    zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]] * (int) quant2[initialZigzag[threadIndexInBlock]];
 
     __syncthreads();
+
+    // if (threadIndexInBlock == 0 && globalBlockIndex < 192) {
+    //     printf("%d %d %d \n", zigzag_l[threadIndexInBlock], (int) quant1[threadIndexInBlock], zigzag_l[threadIndexInBlock]*(int) quant1[threadIndexInBlock]);
+    //     // counter++;
+    // }
 
     if (threadCol == 0) {
         idctRow(zigzag_l + threadIndexInBlock);
