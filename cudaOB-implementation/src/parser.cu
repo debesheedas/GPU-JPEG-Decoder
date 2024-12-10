@@ -283,12 +283,18 @@ __device__ int entropyDecode(int threadId, int bitOffset, uint8_t* imageData, in
         // TODO: return an error if no huffman code matches
         bitOffset += code_length;
         // if (threadId == 1) printf("hi\n");
-        if (code == 0) {
+        if (code == 0) { // these for loops are only required when writing to the scratchpad
+            for (int i = 0; i < (64-length); i++) {
+                channel_scratchpad[length+i] = 0;
+            }
             break;
         }
         // if (threadId == 1) printf("hi\n");
         // The first part of the AC key length is the number of leading zeros
         if (code > 15) {
+            for (int i = 0; i< (code >> 4); i++) {
+                channel_scratchpad[length+i] = 0;
+            }
             length += (code >> 4);
             code = code & 0x0f;
         }
@@ -357,23 +363,6 @@ __device__ void performZigzagReordering(int* arr_l, int* arr_r, int* arr_y,
                                         int* zigzag_l, int* zigzag_r, int* zigzag_y, uint8_t* quant1, uint8_t* quant2,
                                         int blockIndex, int threadIndexInBlock, int threadId,
                                         const int* initialZigzag) {
-    // if (threadIndexInBlock==0 && blockIndex != 0) {
-    //     arr_l[blockIndex * 64] += arr_l[(blockIndex-1) * 64];
-    //     arr_r[blockIndex * 64] += arr_r[(blockIndex-1) * 64];
-    //     arr_y[blockIndex * 64] += arr_y[(blockIndex-1) * 64];
-    // }
-    // __syncthreads();
-    // // Print the expected output here
-    // if (threadIndexInBlock==0 && blockIndex == 0) {
-    //     for (int i = 0; i< 5; i++) {
-    //         printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
-    //     }
-    //     printf("----------------\n");
-    //     for (int i = 64; i< 70; i++) {
-    //         printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
-    //     }
-    // }
-    // __syncthreads();
     zigzag_l[threadId] = arr_l[blockIndex * 64 + initialZigzag[threadIndexInBlock]] * (int) quant1[initialZigzag[threadIndexInBlock]];
     zigzag_r[threadId] = arr_r[blockIndex * 64 + initialZigzag[threadIndexInBlock]] * (int) quant2[initialZigzag[threadIndexInBlock]];
     zigzag_y[threadId] = arr_y[blockIndex * 64 + initialZigzag[threadIndexInBlock]] * (int) quant2[initialZigzag[threadIndexInBlock]];
@@ -430,36 +419,31 @@ __device__ void parallelBuildMCU(int threadId, uint8_t* imageData, int* arr_l, i
     __shared__ int next_offset;
     __shared__ int blockCounter;
     __shared__ int x;
+    __shared__ int guess_offset;
     // // call decode on thread 0
     if (threadId==0) {
         blockCounter = 0;
         next_offset = 0;
-        x = 480;
+        guess_offset = 300;
+        x = 300;
     }
     __syncthreads();
     
     while (blockCounter < nBlocks) {
         if (threadId==0) {
+            printf("blobk no: %d\n", blockCounter);
             red_found = 0;
             yellow_found = 0;
             yellow_pos = -1;
-            // red_pos = -1;
             red_pos = entropyDecode(threadId, next_offset, imageData, &arr_l[64*blockCounter],  hf0codes, hf0lengths, hf16codes, hf16lengths);
-            // printf("next offset %d\n", next_offset);
-            // printf("Red pos: %d\n", red_pos);
-            // printf("x: %d %d\n", x, x+256);
-            // printf("-----\n");
+            if (blockCounter == 0) {
+                guess_offset = red_pos - 20;
+            }
         }
         // // call a decode function for threads x to y
         if (threadId > 0 && threadId < guesses) {
-        // if(threadId == 0) {
-            // entropyDecode(threadId, threadId + x, imageData, scratchpad, hf1codes, hf1lengths, hf17codes, hf17lengths);
-            // printf("HHHHHH");
             predictions[threadId] = entropyDecode(threadId, threadId + x, imageData, &scratchpad[threadId*64], hf1codes, hf1lengths, hf17codes, hf17lengths);
-            // printf("predictions [%d] = %d \n", threadId, predictions[threadId]);
         }
-        // assert(threadId>=0 && threadId < 128);
-        // // sync threads
         __syncthreads();
         if (threadId + x == red_pos) {
             red_found = 1;
@@ -467,15 +451,13 @@ __device__ void parallelBuildMCU(int threadId, uint8_t* imageData, int* arr_l, i
             if ((yellow_pos-x) > 0 && (yellow_pos-x) < guesses) yellow_found = 1;
         }
         __syncthreads();
-        if (threadId + x == red_pos) { // This is the thread which correctly decoded the red channel
-            // printf("Hit at threadId: %d \n", threadId);
+        if (threadId + x == red_pos && red_found == 1) { // This is the thread which correctly decoded the red channel
             // printf("Red\n");
             for (int i = 0; i < 64; i ++) {
                 arr_r[(64*blockCounter)+i] = scratchpad[(threadId*64) + i];
             }
         }
         if (threadId + x == yellow_pos) {
-            // printf("Yellow Hit at threadId: %d \n", threadId);
             // printf("Yellow\n");
             for (int i = 0; i < 64; i ++) {
                 arr_y[(64*blockCounter)+i] = scratchpad[(threadId*64) + i];
@@ -486,7 +468,7 @@ __device__ void parallelBuildMCU(int threadId, uint8_t* imageData, int* arr_l, i
             yellow_pos = entropyDecode(threadId, red_pos, imageData, &arr_r[64*blockCounter], hf1codes, hf1lengths, hf17codes, hf17lengths);
             next_offset = entropyDecode(threadId, yellow_pos, imageData, &arr_y[64*blockCounter], hf1codes, hf1lengths, hf17codes, hf17lengths);
         }
-        if (threadId == 1 && yellow_pos != -1 && yellow_found == 0) { // yellow channel was not correctly decoded so decode red 
+        if (threadId == 1 && red_found == 1 && yellow_pos != -1 && yellow_found == 0) { // yellow channel was not correctly decoded so decode red 
             next_offset = entropyDecode(threadId, yellow_pos, imageData, &arr_y[64*blockCounter], hf1codes, hf1lengths, hf17codes, hf17lengths);
         }
         __syncthreads();
@@ -498,7 +480,7 @@ __device__ void parallelBuildMCU(int threadId, uint8_t* imageData, int* arr_l, i
                 arr_y[64*blockCounter] += arr_y[64*(blockCounter-1)];
             }
             blockCounter += 1;
-            x = next_offset+480;
+            x = next_offset+guess_offset;
         }
         __syncthreads();
     }
@@ -513,12 +495,12 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     int pixelIndex = threadId;
     int totalPixels = width * height;
 
-    if (threadId==0) {
-        performHuffmanDecoding(imageData, arr_l, arr_r, arr_y, quant1, quant2, 
-                               hf0codes, hf0lengths, hf16codes, hf16lengths, 
-                               hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
-    }
-    __syncthreads();
+    // if (threadId==0) {
+    //     performHuffmanDecoding(imageData, arr_l, arr_r, arr_y, quant1, quant2, 
+    //                            hf0codes, hf0lengths, hf16codes, hf16lengths, 
+    //                            hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
+    // }
+    // __syncthreads();
     // // Print the expected output here
     // if (threadId==0) {
     //     for (int i = 0; i< 5; i++) {
@@ -530,21 +512,21 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     //     }
     // }
     // __syncthreads();
-    // parallelBuildMCU(threadId, imageData, arr_l, arr_r, arr_y, hf0codes, hf0lengths, hf16codes, hf16lengths, 
-    //                     hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks*xBlocks, guesses, predictions, scratchpad);
+    parallelBuildMCU(threadId, imageData, arr_l, arr_r, arr_y, hf0codes, hf0lengths, hf16codes, hf16lengths, 
+                        hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks*xBlocks, guesses, predictions, scratchpad);
     
-    // __syncthreads();
+    __syncthreads();
     // Print the expected output here
-    // if (threadId==0) {
-    //     for (int i = 0; i < 76800; i++) {
-    //         // printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
-    //         printf("%d ", arr_r[i]);
-    //     }
-    //     // printf("----------------\n");
-    //     // for (int i = 64; i< 70; i++) {
-    //     //     printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
-    //     // }
-    // }
+    if (threadId==0) {
+        for (int i = 0; i < 10; i++) {
+            printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
+            // printf("%d ", arr_r[i]);
+        }
+        // printf("----------------\n");
+        // for (int i = 64; i< 70; i++) {
+        //     printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
+        // }
+    }
     // REMEMBER TO ADD OLD COEFF
     // __syncthreads();
 
