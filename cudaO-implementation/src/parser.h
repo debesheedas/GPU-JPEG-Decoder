@@ -83,6 +83,7 @@ class JPEGParser {
         int* zigzag;
 
         int *luminous, *chromRed, *chromYel;
+        int *zigzag_l, *zigzag_r, *zigzag_y;
         int *redOutput, *greenOutput, *blueOutput;
 
         // Methods for extracting and building blocks.
