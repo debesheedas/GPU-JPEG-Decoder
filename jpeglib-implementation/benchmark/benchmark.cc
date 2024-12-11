@@ -65,7 +65,7 @@ void RegisterBenchmarks(const std::string& datasetPath) {
 }
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_old";
     RegisterBenchmarks(datasetPath);
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();
