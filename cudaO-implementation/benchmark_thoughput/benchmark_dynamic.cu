@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <cuda_runtime.h>
 #include <nvtx3/nvToolsExt.h>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaUF-implementation/src/parser.h"
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaO-implementation/src/parser.h"
 
 namespace fs = std::filesystem;
 
@@ -21,19 +21,22 @@ std::vector<std::string> getAllImages(const std::string& datasetPath) {
     return imagePaths;
 }
 
-// __global__ void myKernel(int size) {
-//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (idx < size) {
-//         idx = idx; // Example operation
-//     }
-// }
+__global__ void myKernel(int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        idx = idx; // Example operation
+    }
+}
 // CUDA kernel for parallel image processing (dummy example, replace with actual implementation)
 
 struct JPEGParserData {
-    unsigned char* imageData;   // Pointer to image data
+    uint8_t* imageData;   // Pointer to image data
     int* luminous;            // Pointer to luminance data
     int* chromRed;            // Pointer to chroma red data
-    int* chromYel;            // Pointer to chroma yellow data            // Pointer to chroma yellow data
+    int* chromYel;            // Pointer to chroma yellow data
+    int* zigzag_l;
+    int* zigzag_r;
+    int* zigzag_y;            
     double* idctTable;           // Pointer to IDCT table
     int idctWidth;              // Width of IDCT (e.g., 8)
     int idctHeight;             // Height of IDCT (e.g., 8)
@@ -64,6 +67,9 @@ JPEGParserData copyToStruct(JPEGParser* parser) {
     data.luminous = parser->luminous;
     data.chromRed = parser->chromRed;
     data.chromYel = parser->chromYel;
+    data.zigzag_l = parser->zigzag_l;
+    data.zigzag_r = parser->zigzag_r;
+    data.zigzag_y = parser->zigzag_y;
     data.idctTable = parser->idctTable;
     data.idctWidth = 8;  // Fixed width
     data.idctHeight = 8; // Fixed height
@@ -84,8 +90,6 @@ JPEGParserData copyToStruct(JPEGParser* parser) {
     data.hf1lengths = parser->hf1lengths;
     data.hf16lengths = parser->hf16lengths;
     data.hf17lengths = parser->hf17lengths;
-
-
     return data;
 }
 
@@ -98,10 +102,13 @@ __global__ void processImagesKernel(JPEGParserData* deviceStructs, int numImages
         dim3 blockSize(8, 8);
         dim3 gridSize((deviceStructs[idx].width + blockSize.x - 1) / blockSize.x, (deviceStructs[idx].height + blockSize.y - 1) / blockSize.y);
 
-        decodeKernel<<<gridSize, blockSize>>>(deviceStructs[idx].imageData, 
+        decodeKernel<<<1,1024>>>(deviceStructs[idx].imageData, 
                                                 deviceStructs[idx].luminous, 
                                                 deviceStructs[idx].chromRed, 
                                                 deviceStructs[idx].chromYel, 
+                                                deviceStructs[idx].zigzag_l,
+                                                deviceStructs[idx].zigzag_r,
+                                                deviceStructs[idx].zigzag_y, 
                                                 deviceStructs[idx].idctTable, 
                                                 8, 8,  
                                                 deviceStructs[idx].width, 
@@ -131,9 +138,9 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
     // Define batch size (adjust based on available memory)
-    size_t batchSize =  512; // Example batch size
+    size_t batchSize =  64; // Example batch size
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
-    std::cout<< "num batches" << numBatches << "numImages" << numImages << std::endl;
+    std::cout<< "num batches " << numBatches << " | numImages " << numImages << std::endl;
 
     for (auto _ : state) {
         float totalKernelTime = 0.0f; // Total time across all batches
@@ -187,6 +194,9 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 if (structs[i].luminous) cudaFree(structs[i].luminous);
                 if (structs[i].chromRed) cudaFree(structs[i].chromRed);
                 if (structs[i].chromYel) cudaFree(structs[i].chromYel);
+                if (structs[i].zigzag_l) cudaFree(structs[i].zigzag_l);
+                if (structs[i].zigzag_r) cudaFree(structs[i].zigzag_r);
+                if (structs[i].zigzag_y) cudaFree(structs[i].zigzag_y);
                 if (structs[i].hf0codes) cudaFree(structs[i].hf0codes);
                 if (structs[i].hf1codes) cudaFree(structs[i].hf1codes);
                 if (structs[i].hf16codes) cudaFree(structs[i].hf16codes);
@@ -195,7 +205,6 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 if (structs[i].hf1lengths) cudaFree(structs[i].hf1lengths);
                 if (structs[i].hf16lengths) cudaFree(structs[i].hf16lengths);
                 if (structs[i].hf17lengths) cudaFree(structs[i].hf17lengths);
-                // if (structs[i].redOutput) std::cout<<"red" << std::endl;
                 if (structs[i].redOutput) cudaFree(structs[i].redOutput);
                 if (structs[i].greenOutput) cudaFree(structs[i].greenOutput);
                 if (structs[i].blueOutput) cudaFree(structs[i].blueOutput);
