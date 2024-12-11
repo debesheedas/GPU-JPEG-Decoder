@@ -318,7 +318,8 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
 
     int decoded = decodeNumber(code, bits); 
     int dcCoeff = decoded + oldCoeff;
-    outBuffer[0] = dcCoeff * (int) quant[0];
+
+    outBuffer[0] = dcCoeff;
 
     int length = 1;
     while (length < 64) {
@@ -335,9 +336,7 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
         bits = getNBits(imageData, bitOffset, code);
         if (length < 64) {
             decoded = decodeNumber(code, bits);
-            int val;
-            val = decoded * (int) quant[length];
-            outBuffer[length] = val;
+            outBuffer[length] = decoded;
             length++;
         }
     }
@@ -391,10 +390,10 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_
 __device__ void performZigzagReordering(int* arr_l, int* arr_r, int* arr_y, 
                                         int* zigzag_l, int* zigzag_r, int* zigzag_y,
                                         int blockIndex, int threadIndexInBlock, int threadId,
-                                        const int* initialZigzag, int pixelIndex) {
-    zigzag_l[pixelIndex] = arr_l[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
-    zigzag_r[pixelIndex] = arr_r[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
-    zigzag_y[pixelIndex] = arr_y[blockIndex * 64 + initialZigzag[threadIndexInBlock]];
+                                        const int* initialZigzag, int pixelIndex, uint8_t* quant1, uint8_t* quant2) {
+    zigzag_l[pixelIndex] = arr_l[blockIndex * 64 + initialZigzag[threadIndexInBlock]] * quant1[initialZigzag[threadIndexInBlock]];
+    zigzag_r[pixelIndex] = arr_r[blockIndex * 64 + initialZigzag[threadIndexInBlock]] * quant2[initialZigzag[threadIndexInBlock]];
+    zigzag_y[pixelIndex] = arr_y[blockIndex * 64 + initialZigzag[threadIndexInBlock]] * quant2[initialZigzag[threadIndexInBlock]];
 }
 
 __device__ void performColorConversion(int* arr_l, int* arr_r, int* arr_y,
@@ -464,7 +463,7 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
         int blockIndex = pixelIndex / 64;
 
         performZigzagReordering(arr_l, arr_r, arr_y, zigzag_l, zigzag_r, zigzag_y,
-                                blockIndex, threadIndexInBlock, threadId, initialZigzag, pixelIndex);
+                                blockIndex, threadIndexInBlock, threadId, initialZigzag, pixelIndex, quant1, quant2);
 
         pixelIndex += blockDim.x * gridDim.x;
     }
@@ -540,7 +539,7 @@ __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr
         int blockIndex = pixelIndex / 64;
 
         performZigzagReordering(arr_l, arr_r, arr_y, zigzag_l, zigzag_r, zigzag_y,
-                                blockIndex, threadIndexInBlock, threadId, initialZigzag, pixelIndex);
+                                blockIndex, threadIndexInBlock, threadId, initialZigzag, pixelIndex, quant1, quant2);
 
         pixelIndex += blockSize;
     }
