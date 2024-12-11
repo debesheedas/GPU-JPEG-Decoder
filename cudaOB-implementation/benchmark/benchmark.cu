@@ -4,7 +4,7 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda-implementation/src/parser.h"
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaOB-implementation/src/parser.h"
 #include <cuda_runtime.h>
 #include <nvtx3/nvToolsExt.h>
 
@@ -39,10 +39,11 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
         nvtxRangePush("Full");
 
         JPEGParser parser(imagePath);
+        parser.extract();
 
         cudaEventRecord(start);
 
-        parser.extract();
+        
         parser.decode();
         
         cudaEventRecord(stop);
@@ -83,7 +84,7 @@ void RegisterBenchmarks(const std::string& datasetPath) {
 }
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_old";
     RegisterBenchmarks(datasetPath);
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();

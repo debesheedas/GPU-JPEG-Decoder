@@ -20,7 +20,6 @@ std::vector<std::string> getAllImages(const std::string& datasetPath) {
     }
     return imagePaths;
 }
-
 // __global__ void myKernel(int size) {
 //     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 //     if (idx < size) {
@@ -29,32 +28,6 @@ std::vector<std::string> getAllImages(const std::string& datasetPath) {
 // }
 // CUDA kernel for parallel image processing (dummy example, replace with actual implementation)
 
-struct JPEGParserData {
-    unsigned char* imageData;   // Pointer to image data
-    int* luminous;            // Pointer to luminance data
-    int* chromRed;            // Pointer to chroma red data
-    int* chromYel;            // Pointer to chroma yellow data            // Pointer to chroma yellow data
-    double* idctTable;           // Pointer to IDCT table
-    int idctWidth;              // Width of IDCT (e.g., 8)
-    int idctHeight;             // Height of IDCT (e.g., 8)
-    int width;                  // Image width
-    int height;                 // Image height
-    int xBlocks;                // Number of horizontal blocks
-    int yBlocks;                // Number of vertical blocks
-    int* redOutput;           // Pointer to red channel output
-    int* greenOutput;         // Pointer to green channel output
-    int* blueOutput;          // Pointer to blue channel output
-    uint8_t* quantTable1;         // Pointer to first quantization table
-    uint8_t* quantTable2;         // Pointer to second quantization table
-    uint16_t* hf0codes;    // Huffman table 0 codes
-    uint16_t* hf1codes;    // Huffman table 1 codes
-    uint16_t* hf16codes;   // Huffman table 16 codes
-    uint16_t* hf17codes;   // Huffman table 17 codes
-    int* hf0lengths;            // Huffman table 0 lengths
-    int* hf1lengths;            // Huffman table 1 lengths
-    int* hf16lengths;           // Huffman table 16 lengths
-    int* hf17lengths;           // Huffman table 17 lengths
-};
 
 JPEGParserData copyToStruct(JPEGParser* parser) {
     JPEGParserData data;
@@ -64,6 +37,9 @@ JPEGParserData copyToStruct(JPEGParser* parser) {
     data.luminous = parser->luminous;
     data.chromRed = parser->chromRed;
     data.chromYel = parser->chromYel;
+    data.zigzag_l = parser->zigzag_l;
+    data.zigzag_r = parser->zigzag_r;
+    data.zigzag_y = parser->zigzag_y;
     data.idctTable = parser->idctTable;
     data.idctWidth = 8;  // Fixed width
     data.idctHeight = 8; // Fixed height
@@ -84,46 +60,47 @@ JPEGParserData copyToStruct(JPEGParser* parser) {
     data.hf1lengths = parser->hf1lengths;
     data.hf16lengths = parser->hf16lengths;
     data.hf17lengths = parser->hf17lengths;
-
-
     return data;
 }
 
-__global__ void processImagesKernel(JPEGParserData* deviceStructs, int numImages) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < numImages) {
-        // Process each image buffer (dummy operation, replace with decoding logic)
-        // jpegParsers[idx].decode();
-        // myKernel<<<1, 256>>>(idx);
-        dim3 blockSize(8, 8);
-        dim3 gridSize((deviceStructs[idx].width + blockSize.x - 1) / blockSize.x, (deviceStructs[idx].height + blockSize.y - 1) / blockSize.y);
+// __global__ void processImagesKernel(JPEGParserData* deviceStructs, int numImages) {
+//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (idx < numImages) {
+//         // Process each image buffer (dummy operation, replace with decoding logic)
+//         // jpegParsers[idx].decode();
+//         // myKernel<<<1, 256>>>(idx);
+//         dim3 blockSize(8, 8);
+//         dim3 gridSize((deviceStructs[idx].width + blockSize.x - 1) / blockSize.x, (deviceStructs[idx].height + blockSize.y - 1) / blockSize.y);
 
-        decodeKernel<<<gridSize, blockSize>>>(deviceStructs[idx].imageData, 
-                                                deviceStructs[idx].luminous, 
-                                                deviceStructs[idx].chromRed, 
-                                                deviceStructs[idx].chromYel, 
-                                                deviceStructs[idx].idctTable, 
-                                                8, 8,  
-                                                deviceStructs[idx].width, 
-                                                deviceStructs[idx].height, 
-                                                deviceStructs[idx].xBlocks, 
-                                                deviceStructs[idx].yBlocks, 
-                                                deviceStructs[idx].redOutput, 
-                                                deviceStructs[idx].greenOutput, 
-                                                deviceStructs[idx].blueOutput,
-                                                deviceStructs[idx].quantTable1, 
-                                                deviceStructs[idx].quantTable2, 
-                                                deviceStructs[idx].hf0codes, 
-                                                deviceStructs[idx].hf1codes, 
-                                                deviceStructs[idx].hf16codes, 
-                                                deviceStructs[idx].hf17codes, 
-                                                deviceStructs[idx].hf0lengths, 
-                                                deviceStructs[idx].hf1lengths, 
-                                                deviceStructs[idx].hf16lengths, 
-                                                deviceStructs[idx].hf17lengths
-                                                );
-    }
-}
+//         decodeKernel<<<1,1024>>>(deviceStructs[idx].imageData, 
+//                                                 deviceStructs[idx].luminous, 
+//                                                 deviceStructs[idx].chromRed, 
+//                                                 deviceStructs[idx].chromYel, 
+//                                                 deviceStructs[idx].zigzag_l,
+//                                                 deviceStructs[idx].zigzag_r,
+//                                                 deviceStructs[idx].zigzag_y, 
+//                                                 deviceStructs[idx].idctTable, 
+//                                                 8, 8,  
+//                                                 deviceStructs[idx].width, 
+//                                                 deviceStructs[idx].height, 
+//                                                 deviceStructs[idx].xBlocks, 
+//                                                 deviceStructs[idx].yBlocks, 
+//                                                 deviceStructs[idx].redOutput, 
+//                                                 deviceStructs[idx].greenOutput, 
+//                                                 deviceStructs[idx].blueOutput,
+//                                                 deviceStructs[idx].quantTable1, 
+//                                                 deviceStructs[idx].quantTable2, 
+//                                                 deviceStructs[idx].hf0codes, 
+//                                                 deviceStructs[idx].hf1codes, 
+//                                                 deviceStructs[idx].hf16codes, 
+//                                                 deviceStructs[idx].hf17codes, 
+//                                                 deviceStructs[idx].hf0lengths, 
+//                                                 deviceStructs[idx].hf1lengths, 
+//                                                 deviceStructs[idx].hf16lengths, 
+//                                                 deviceStructs[idx].hf17lengths
+//                                                 );
+//     }
+// }
 
 // Benchmark function for throughput measurement
 void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imagePaths) {
@@ -131,9 +108,9 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
     // Define batch size (adjust based on available memory)
-    size_t batchSize = 64; // Example batch size
+    size_t batchSize =  8; // Example batch size
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
-    std::cout<< "num batches" << numBatches << "numImages" << numImages << std::endl;
+    std::cout<< "num batches " << numBatches << " | numImages " << numImages << std::endl;
 
     for (auto _ : state) {
         float totalKernelTime = 0.0f; // Total time across all batches
@@ -172,14 +149,27 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
             cudaEventCreate(&batchStop);
 
             cudaEventRecord(batchStart);
-            processImagesKernel<<<currentBatchSize, 1>>>(deviceStructs, currentBatchSize);
+            // processImagesKernel<<<currentBatchSize, 1>>>(deviceStructs, currentBatchSize);
+            batchDecodeKernel<<<currentBatchSize,64>>>(deviceStructs);
             cudaEventRecord(batchStop);
             cudaEventSynchronize(batchStop);
+            cudaDeviceSynchronize();
+            cudaError_t err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                printf("CUDA error: %s\n", cudaGetErrorString(err));
+            }
 
             // Calculate time for this batch
             float milliseconds = 0;
             cudaEventElapsedTime(&milliseconds, batchStart, batchStop);
             totalKernelTime += milliseconds;
+
+            // Temporarily write output
+            // for (size_t i = 0; i < currentBatchSize; ++i) {
+            //     // size_t globalIdx = startIdx + i;
+            //     // std::cout << "debug2" <<std::endl;
+            //     jpegParsers[i]->write();
+            // }
 
             // Cleanup for this batch
             for (size_t i = 0; i < currentBatchSize; ++i) {
@@ -187,6 +177,9 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 if (structs[i].luminous) cudaFree(structs[i].luminous);
                 if (structs[i].chromRed) cudaFree(structs[i].chromRed);
                 if (structs[i].chromYel) cudaFree(structs[i].chromYel);
+                if (structs[i].zigzag_l) cudaFree(structs[i].zigzag_l);
+                if (structs[i].zigzag_r) cudaFree(structs[i].zigzag_r);
+                if (structs[i].zigzag_y) cudaFree(structs[i].zigzag_y);
                 if (structs[i].hf0codes) cudaFree(structs[i].hf0codes);
                 if (structs[i].hf1codes) cudaFree(structs[i].hf1codes);
                 if (structs[i].hf16codes) cudaFree(structs[i].hf16codes);
@@ -195,22 +188,24 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 if (structs[i].hf1lengths) cudaFree(structs[i].hf1lengths);
                 if (structs[i].hf16lengths) cudaFree(structs[i].hf16lengths);
                 if (structs[i].hf17lengths) cudaFree(structs[i].hf17lengths);
-                // if (structs[i].redOutput) std::cout<<"red" << std::endl;
                 if (structs[i].redOutput) cudaFree(structs[i].redOutput);
                 if (structs[i].greenOutput) cudaFree(structs[i].greenOutput);
                 if (structs[i].blueOutput) cudaFree(structs[i].blueOutput);
             }
-            cudaFree(deviceStructs);
+            
             cudaEventDestroy(batchStart);
             cudaEventDestroy(batchStop);
             for (size_t i = 0; i < currentBatchSize; ++i) {
-                jpegParsers[i]->~JPEGParser();  // Call the destructor explicitly
+                // jpegParsers[i]->~JPEGParser();  // Call the destructor explicitly
+                delete jpegParsers[i];
             }
             // delete[] jpegParsers;
             // delete[] structs;
             // std::cout<<"Free"<<std::endl;
         }
-
+        cudaFree(deviceStructs);
+        delete[] jpegParsers;
+        delete[] structs;
         // Convert total kernel time to seconds
         double seconds = totalKernelTime / 1000.0;
 
@@ -231,13 +226,11 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
         resultFile << "Throughput: " << throughput << " images/sec, "
                    << "Bytes per second: " << bytesPerSecond / (1024 * 1024) << " MB/sec\n";
     }
-
     resultFile.close();
 }
 
-
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_old";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
 
     std::vector<std::string> imagePaths = getAllImages(datasetPath);
 
@@ -250,10 +243,9 @@ int main(int argc, char** argv) {
         JPEGDecoderBenchmark(state, imagePaths);
     })
     ->Unit(benchmark::kMillisecond)
-    ->Iterations(1);
+    ->Iterations(10);
 
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();
-
     return 0;
 }
