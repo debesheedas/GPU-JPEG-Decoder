@@ -9,11 +9,10 @@
 namespace fs = std::filesystem;
 
 // Function to get all images with a specified size
-std::vector<std::string> getImagesBySize(const std::string& datasetPath, int size) {
-    std::string folderPath = datasetPath + "/" + std::to_string(size) + "x" + std::to_string(size);
+std::vector<std::string> getAllImages(const std::string& datasetPath) {
     std::vector<std::string> imagePaths;
 
-    for (const auto& entry : fs::recursive_directory_iterator(folderPath)) {
+    for (const auto& entry : fs::recursive_directory_iterator(datasetPath)) {
         if (entry.is_regular_file() && entry.path().extension() == ".jpeg") {
             imagePaths.push_back(entry.path().string());
         }
@@ -22,7 +21,7 @@ std::vector<std::string> getImagesBySize(const std::string& datasetPath, int siz
 }
 
 // Benchmark function template for JPEG decoding
-void JPEGDecoderThroughputBenchmark(benchmark::State& state, const std::vector<std::string>& imagePaths) {
+void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string>& imagePaths) {
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
     size_t numImages = imagePaths.size();
 
@@ -61,29 +60,26 @@ void JPEGDecoderThroughputBenchmark(benchmark::State& state, const std::vector<s
     resultFile.close();
 }
 
-// Register throughput benchmarks for different image sizes
-void RegisterThroughputBenchmarks(const std::string& datasetPath) {
-    const std::vector<int> imageSizes = {200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000};
-
-    for (int size : imageSizes) {
-        auto imagePaths = getImagesBySize(datasetPath, size);
-
-        if (!imagePaths.empty()) {
-            std::string benchmarkName = "BM_JPEGThroughput_" + std::to_string(size);
-            benchmark::RegisterBenchmark(benchmarkName.c_str(), [imagePaths](benchmark::State& state) {
-                JPEGDecoderThroughputBenchmark(state, imagePaths);
-            })
-            ->Unit(benchmark::kMillisecond)
-            ->Iterations(10); // Number of benchmark repetitions
-        }
-    }
-}
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_old";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
+    
+    // Get all images in the dataset
+    auto imagePaths = getAllImages(datasetPath);
 
-    RegisterThroughputBenchmarks(datasetPath);
+    if (imagePaths.empty()) {
+        std::cout << "No images found in the dataset directory." << std::endl;
+        return 1;
+    }
 
+    // Run the benchmark on all images
+    benchmark::RegisterBenchmark("BM_JPEGDecoder_AllImages", [imagePaths](benchmark::State& state) {
+        JPEGDecoderBenchmark(state, imagePaths);
+    })
+    ->Unit(benchmark::kMillisecond)
+    ->Iterations(10);
+
+    // Initialize and run the benchmark
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();
 
