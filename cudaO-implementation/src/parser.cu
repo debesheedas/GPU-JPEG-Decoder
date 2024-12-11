@@ -517,10 +517,10 @@ __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr
                                 int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
                                 int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
                                 uint16_t* hf0codes, uint16_t* hf1codes, uint16_t* hf16codes, uint16_t* hf17codes,
-                                int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths) {
+                                int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths, int threadId, int blockSize) {
 
     // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
-    int threadId = threadIdx.x;
+    //int threadId = threadIdx.x;
     // printf("blockdim.x %d\n", blockDim.x);
     // printf("blockidx.x %d\n", blockIdx.x);
     // printf("threadidx.x %d\n", threadIdx.x);
@@ -542,7 +542,7 @@ __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr
         performZigzagReordering(arr_l, arr_r, arr_y, zigzag_l, zigzag_r, zigzag_y,
                                 blockIndex, threadIndexInBlock, threadId, initialZigzag, pixelIndex);
 
-        pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
     }
 
     __syncthreads();
@@ -557,7 +557,7 @@ __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr
         idctRow(zigzag_r + pixelIndex * 8);
         idctRow(zigzag_y + pixelIndex * 8);
 
-        pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
     }
 
     __syncthreads();
@@ -577,18 +577,20 @@ __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr
         idctCol(zigzag_r + start);
         idctCol(zigzag_y + start);
 
-        pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
     }
     __syncthreads();
 
     // Iterate over pixels handled by this thread
     performColorConversion(zigzag_l, zigzag_r, zigzag_y, redOutput, greenOutput, blueOutput, 
-                           totalPixels, width, threadId, blockDim.x * gridDim.x);
+                           totalPixels, width, threadId, blockSize);
 }
 
 __global__ void batchDecodeKernel(JPEGParserData* deviceStructs) {
     // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
     int imageId = blockIdx.x;
+    int threadId = threadIdx.x;
+    int blockSize = blockDim.x;
     decodeImage(deviceStructs[imageId].imageData, 
                 deviceStructs[imageId].luminous, 
                 deviceStructs[imageId].chromRed, 
@@ -614,7 +616,8 @@ __global__ void batchDecodeKernel(JPEGParserData* deviceStructs) {
                 deviceStructs[imageId].hf0lengths, 
                 deviceStructs[imageId].hf1lengths, 
                 deviceStructs[imageId].hf16lengths, 
-                deviceStructs[imageId].hf17lengths);
+                deviceStructs[imageId].hf17lengths,
+                threadId, blockSize);
 }
 
 void JPEGParser::decode() {
@@ -623,7 +626,6 @@ void JPEGParser::decode() {
                                             this->quantTable1, this->quantTable2, this->hf0codes, this->hf1codes, this->hf16codes, this->hf17codes, 
                                             this->hf0lengths, this->hf1lengths, this->hf16lengths, this->hf17lengths);
 
-    this->channels = new ImageChannels(this->height * this->width);
 
     if (luminous) cudaFree(luminous);
     if (chromRed) cudaFree(chromRed);
@@ -639,17 +641,18 @@ void JPEGParser::decode() {
 }
 
 void JPEGParser::write() {
-
+    this->channels = new ImageChannels(this->height * this->width);
     size_t channelSize = this->width * this->height * sizeof(int);
-    cudaMemcpy(channels->getR().data(), redOutput, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getG().data(), greenOutput, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getB().data(), blueOutput, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getR().data(), this->redOutput, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getG().data(), this->greenOutput, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels->getB().data(), this->blueOutput, channelSize, cudaMemcpyDeviceToHost);
     cudaFree(redOutput);
     cudaFree(greenOutput);
     cudaFree(blueOutput);
 
     // Writing the decoded channels to a file instead of displaying using opencv
-    fs::path output_dir = "../testing/cudaO_output_arrays"; // Change the directory name here for future CUDA implementations
+    fs::path output_dir = "../testing/cudaO_output_arrays";
+    // fs::path output_dir = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/bench"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / this->filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);

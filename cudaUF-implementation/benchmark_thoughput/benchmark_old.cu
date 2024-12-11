@@ -126,12 +126,12 @@ __global__ void processImagesKernel(JPEGParserData* deviceStructs, int numImages
 }
 
 // Benchmark function for throughput measurement
-void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imagePaths, size_t batchSize) {
+void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imagePaths) {
     size_t numImages = imagePaths.size();
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
     // Define batch size (adjust based on available memory)
-    // size_t batchSize =  512; // Example batch size
+    size_t batchSize =  512; // Example batch size
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
     std::cout<< "num batches" << numBatches << "numImages" << numImages << std::endl;
 
@@ -237,77 +237,25 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
     resultFile.close();
 }
 
-// int main(int argc, char** argv) {
-//     std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
-
-//     std::vector<std::string> imagePaths = getAllImages(datasetPath);
-
-//     if (imagePaths.empty()) {
-//         std::cout << "No images found in the dataset directory." << std::endl;
-//         return 1;
-//     }
-
-//     benchmark::RegisterBenchmark("BM_JPEGDecoder_Throughput", [imagePaths](benchmark::State& state) {
-//         JPEGDecoderBenchmark(state, imagePaths);
-//     })
-//     ->Unit(benchmark::kMillisecond)
-//     ->Iterations(10);
-
-//     benchmark::Initialize(&argc, argv);
-//     benchmark::RunSpecifiedBenchmarks();
-//     return 0;
-// }
-
 int main(int argc, char** argv) {
-    // std::vector<std::string> datasetPaths = {
-    //     "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini",
-    //     "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_old"
-    // };
-    std::vector<std::string> datasetPaths = {
-        "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini",
-    };
-    std::vector<size_t> batchSizes = {256, 512};
-    //std::vector<size_t> batchSizes = {16, 32, 64, 128, 256, 512};
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
 
+    std::vector<std::string> imagePaths = getAllImages(datasetPath);
 
-    double bestThroughput = 0.0;
-    std::string bestDatasetPath;
-    size_t bestBatchSize = 0;
-
-    for (const auto& datasetPath : datasetPaths) {
-        std::vector<std::string> imagePaths = getAllImages(datasetPath);
-
-        if (imagePaths.empty()) {
-            std::cout << "No images found in dataset: " << datasetPath << std::endl;
-            continue;
-        }
-
-        for (const auto& batchSize : batchSizes) {
-            std::cout << "Testing batchSize: " << batchSize
-                      << " with dataset: " << datasetPath << std::endl;
-
-            benchmark::RegisterBenchmark("BM_JPEGDecoder_Throughput",
-                [&imagePaths, batchSize](benchmark::State& state) {
-                    // Benchmarking function
-                    JPEGDecoderBenchmark(state, imagePaths, batchSize);
-                    
-                    // Retrieve throughput from counters within the benchmarking function
-                    double throughput = state.counters["throughput_images_per_sec"].value;
-                    state.SetLabel("Throughput: " + std::to_string(throughput));
-                })
-                ->Unit(benchmark::kMillisecond)
-                ->Iterations(1);
-
-            benchmark::RunSpecifiedBenchmarks();
-
-            // After benchmarking, you can directly use the state in the benchmark function
-            // So no need to access it outside of the benchmark loop
-        }
+    if (imagePaths.empty()) {
+        std::cout << "No images found in the dataset directory." << std::endl;
+        return 1;
     }
 
-    std::cout << "Best throughput: " << bestThroughput
-              << " images/sec with batchSize: " << bestBatchSize
-              << " and dataset: " << bestDatasetPath << std::endl;
+    benchmark::RegisterBenchmark("BM_JPEGDecoder_Throughput", [imagePaths](benchmark::State& state) {
+        JPEGDecoderBenchmark(state, imagePaths);
+    })
+    ->Unit(benchmark::kMillisecond)
+    ->Iterations(10);
 
+    benchmark::Initialize(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
     return 0;
 }
+
+

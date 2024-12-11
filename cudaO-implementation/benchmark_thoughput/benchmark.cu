@@ -164,6 +164,13 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
             cudaEventElapsedTime(&milliseconds, batchStart, batchStop);
             totalKernelTime += milliseconds;
 
+            // Temporarily write output
+            // for (size_t i = 0; i < currentBatchSize; ++i) {
+            //     // size_t globalIdx = startIdx + i;
+            //     // std::cout << "debug2" <<std::endl;
+            //     jpegParsers[i]->write();
+            // }
+
             // Cleanup for this batch
             for (size_t i = 0; i < currentBatchSize; ++i) {
                 // if (structs[i].luminous) std::cout<<"lim" << std::endl;
