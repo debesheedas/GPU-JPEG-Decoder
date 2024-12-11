@@ -431,7 +431,7 @@ __device__ void parallelBuildMCU(int threadId, uint8_t* imageData, int* arr_l, i
     
     while (blockCounter < nBlocks) {
         if (threadId==0) {
-            printf("blobk no: %d\n", blockCounter);
+            // printf("blobk no: %d\n", blockCounter);
             red_found = 0;
             yellow_found = 0;
             yellow_pos = -1;
@@ -517,16 +517,16 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     
     __syncthreads();
     // Print the expected output here
-    if (threadId==0) {
-        for (int i = 0; i < 10; i++) {
-            printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
-            // printf("%d ", arr_r[i]);
-        }
-        // printf("----------------\n");
-        // for (int i = 64; i< 70; i++) {
-        //     printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
-        // }
-    }
+    // if (threadId==0) {
+    //     for (int i = 0; i < 10; i++) {
+    //         printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
+    //         // printf("%d ", arr_r[i]);
+    //     }
+    //     // printf("----------------\n");
+    //     // for (int i = 64; i< 70; i++) {
+    //     //     printf("---- %d %d %d\n", arr_l[i], arr_r[i], arr_y[i]);
+    //     // }
+    // }
     // REMEMBER TO ADD OLD COEFF
     // __syncthreads();
 
@@ -596,6 +596,7 @@ void JPEGParser::decode() {
     if (hf16lengths) cudaFree(hf16lengths);
     if (hf17lengths) cudaFree(hf17lengths); 
     if (scratchpad) cudaFree(scratchpad);
+    if (predictions) cudaFree(predictions);
 }
 
 void JPEGParser::write() {
