@@ -445,6 +445,10 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
                                 int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths) {
 
     int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    // printf("blockdim.x %d\n", blockDim.x);
+    // printf("blockidx.x %d\n", blockIdx.x);
+    // printf("threadidx.x %d\n", threadIdx.x);
+
     int pixelIndex = threadId;
     int totalPixels = width * height;
 
@@ -504,6 +508,113 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     // Iterate over pixels handled by this thread
     performColorConversion(zigzag_l, zigzag_r, zigzag_y, redOutput, greenOutput, blueOutput, 
                            totalPixels, width, threadId, blockDim.x * gridDim.x);
+}
+
+
+
+__device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, int* zigzag_l, int* zigzag_r, 
+                                int* zigzag_y, double* idctTable, int validHeight, 
+                                int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
+                                int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
+                                uint16_t* hf0codes, uint16_t* hf1codes, uint16_t* hf16codes, uint16_t* hf17codes,
+                                int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths) {
+
+    // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
+    int threadId = threadIdx.x;
+    // printf("blockdim.x %d\n", blockDim.x);
+    // printf("blockidx.x %d\n", blockIdx.x);
+    // printf("threadidx.x %d\n", threadIdx.x);
+
+    int pixelIndex = threadId;
+    int totalPixels = width * height;
+
+    if (threadId==0) {
+        performHuffmanDecoding(imageData, arr_l, arr_r, arr_y, quant1, quant2, 
+                               hf0codes, hf0lengths, hf16codes, hf16lengths, 
+                               hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
+    }
+    __syncthreads();
+
+    while (pixelIndex < totalPixels) {
+        int threadIndexInBlock = pixelIndex % 64;
+        int blockIndex = pixelIndex / 64;
+
+        performZigzagReordering(arr_l, arr_r, arr_y, zigzag_l, zigzag_r, zigzag_y,
+                                blockIndex, threadIndexInBlock, threadId, initialZigzag, pixelIndex);
+
+        pixelIndex += blockDim.x * gridDim.x;
+    }
+
+    __syncthreads();
+
+    pixelIndex = threadId;
+
+    while (pixelIndex * 8 < totalPixels) {
+        // int threadIndexInBlock = pixelIndex % 64;
+        // int blockIndex = pixelIndex / 64;
+        
+        idctRow(zigzag_l + pixelIndex * 8);
+        idctRow(zigzag_r + pixelIndex * 8);
+        idctRow(zigzag_y + pixelIndex * 8);
+
+        pixelIndex += blockDim.x * gridDim.x;
+    }
+
+    __syncthreads();
+
+    pixelIndex = threadId;
+
+     while (pixelIndex * 8 < totalPixels) {
+        // int threadIndexInBlock = pixelIndex % 64;
+        // int blockIndex = pixelIndex / 64;
+
+
+        int start = pixelIndex / 8;
+        start = start * 64;
+        start = start + (pixelIndex % 8);
+        
+        idctCol(zigzag_l + start);
+        idctCol(zigzag_r + start);
+        idctCol(zigzag_y + start);
+
+        pixelIndex += blockDim.x * gridDim.x;
+    }
+    __syncthreads();
+
+    // Iterate over pixels handled by this thread
+    performColorConversion(zigzag_l, zigzag_r, zigzag_y, redOutput, greenOutput, blueOutput, 
+                           totalPixels, width, threadId, blockDim.x * gridDim.x);
+}
+
+__global__ void batchDecodeKernel(JPEGParserData* deviceStructs) {
+    // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
+    int imageId = blockIdx.x;
+    decodeImage(deviceStructs[imageId].imageData, 
+                deviceStructs[imageId].luminous, 
+                deviceStructs[imageId].chromRed, 
+                deviceStructs[imageId].chromYel, 
+                deviceStructs[imageId].zigzag_l,
+                deviceStructs[imageId].zigzag_r,
+                deviceStructs[imageId].zigzag_y, 
+                deviceStructs[imageId].idctTable, 
+                8, 8,  
+                deviceStructs[imageId].width, 
+                deviceStructs[imageId].height, 
+                deviceStructs[imageId].xBlocks, 
+                deviceStructs[imageId].yBlocks, 
+                deviceStructs[imageId].redOutput, 
+                deviceStructs[imageId].greenOutput, 
+                deviceStructs[imageId].blueOutput,
+                deviceStructs[imageId].quantTable1, 
+                deviceStructs[imageId].quantTable2, 
+                deviceStructs[imageId].hf0codes, 
+                deviceStructs[imageId].hf1codes, 
+                deviceStructs[imageId].hf16codes, 
+                deviceStructs[imageId].hf17codes, 
+                deviceStructs[imageId].hf0lengths, 
+                deviceStructs[imageId].hf1lengths, 
+                deviceStructs[imageId].hf16lengths, 
+                deviceStructs[imageId].hf17lengths);
 }
 
 void JPEGParser::decode() {

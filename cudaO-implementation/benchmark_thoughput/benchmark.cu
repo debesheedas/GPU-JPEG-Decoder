@@ -20,44 +20,14 @@ std::vector<std::string> getAllImages(const std::string& datasetPath) {
     }
     return imagePaths;
 }
-
-__global__ void myKernel(int size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        idx = idx; // Example operation
-    }
-}
+// __global__ void myKernel(int size) {
+//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (idx < size) {
+//         idx = idx; // Example operation
+//     }
+// }
 // CUDA kernel for parallel image processing (dummy example, replace with actual implementation)
 
-struct JPEGParserData {
-    uint8_t* imageData;   // Pointer to image data
-    int* luminous;            // Pointer to luminance data
-    int* chromRed;            // Pointer to chroma red data
-    int* chromYel;            // Pointer to chroma yellow data
-    int* zigzag_l;
-    int* zigzag_r;
-    int* zigzag_y;            
-    double* idctTable;           // Pointer to IDCT table
-    int idctWidth;              // Width of IDCT (e.g., 8)
-    int idctHeight;             // Height of IDCT (e.g., 8)
-    int width;                  // Image width
-    int height;                 // Image height
-    int xBlocks;                // Number of horizontal blocks
-    int yBlocks;                // Number of vertical blocks
-    int* redOutput;           // Pointer to red channel output
-    int* greenOutput;         // Pointer to green channel output
-    int* blueOutput;          // Pointer to blue channel output
-    uint8_t* quantTable1;         // Pointer to first quantization table
-    uint8_t* quantTable2;         // Pointer to second quantization table
-    uint16_t* hf0codes;    // Huffman table 0 codes
-    uint16_t* hf1codes;    // Huffman table 1 codes
-    uint16_t* hf16codes;   // Huffman table 16 codes
-    uint16_t* hf17codes;   // Huffman table 17 codes
-    int* hf0lengths;            // Huffman table 0 lengths
-    int* hf1lengths;            // Huffman table 1 lengths
-    int* hf16lengths;           // Huffman table 16 lengths
-    int* hf17lengths;           // Huffman table 17 lengths
-};
 
 JPEGParserData copyToStruct(JPEGParser* parser) {
     JPEGParserData data;
@@ -93,44 +63,44 @@ JPEGParserData copyToStruct(JPEGParser* parser) {
     return data;
 }
 
-__global__ void processImagesKernel(JPEGParserData* deviceStructs, int numImages) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < numImages) {
-        // Process each image buffer (dummy operation, replace with decoding logic)
-        // jpegParsers[idx].decode();
-        // myKernel<<<1, 256>>>(idx);
-        dim3 blockSize(8, 8);
-        dim3 gridSize((deviceStructs[idx].width + blockSize.x - 1) / blockSize.x, (deviceStructs[idx].height + blockSize.y - 1) / blockSize.y);
+// __global__ void processImagesKernel(JPEGParserData* deviceStructs, int numImages) {
+//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (idx < numImages) {
+//         // Process each image buffer (dummy operation, replace with decoding logic)
+//         // jpegParsers[idx].decode();
+//         // myKernel<<<1, 256>>>(idx);
+//         dim3 blockSize(8, 8);
+//         dim3 gridSize((deviceStructs[idx].width + blockSize.x - 1) / blockSize.x, (deviceStructs[idx].height + blockSize.y - 1) / blockSize.y);
 
-        decodeKernel<<<1,1024>>>(deviceStructs[idx].imageData, 
-                                                deviceStructs[idx].luminous, 
-                                                deviceStructs[idx].chromRed, 
-                                                deviceStructs[idx].chromYel, 
-                                                deviceStructs[idx].zigzag_l,
-                                                deviceStructs[idx].zigzag_r,
-                                                deviceStructs[idx].zigzag_y, 
-                                                deviceStructs[idx].idctTable, 
-                                                8, 8,  
-                                                deviceStructs[idx].width, 
-                                                deviceStructs[idx].height, 
-                                                deviceStructs[idx].xBlocks, 
-                                                deviceStructs[idx].yBlocks, 
-                                                deviceStructs[idx].redOutput, 
-                                                deviceStructs[idx].greenOutput, 
-                                                deviceStructs[idx].blueOutput,
-                                                deviceStructs[idx].quantTable1, 
-                                                deviceStructs[idx].quantTable2, 
-                                                deviceStructs[idx].hf0codes, 
-                                                deviceStructs[idx].hf1codes, 
-                                                deviceStructs[idx].hf16codes, 
-                                                deviceStructs[idx].hf17codes, 
-                                                deviceStructs[idx].hf0lengths, 
-                                                deviceStructs[idx].hf1lengths, 
-                                                deviceStructs[idx].hf16lengths, 
-                                                deviceStructs[idx].hf17lengths
-                                                );
-    }
-}
+//         decodeKernel<<<1,1024>>>(deviceStructs[idx].imageData, 
+//                                                 deviceStructs[idx].luminous, 
+//                                                 deviceStructs[idx].chromRed, 
+//                                                 deviceStructs[idx].chromYel, 
+//                                                 deviceStructs[idx].zigzag_l,
+//                                                 deviceStructs[idx].zigzag_r,
+//                                                 deviceStructs[idx].zigzag_y, 
+//                                                 deviceStructs[idx].idctTable, 
+//                                                 8, 8,  
+//                                                 deviceStructs[idx].width, 
+//                                                 deviceStructs[idx].height, 
+//                                                 deviceStructs[idx].xBlocks, 
+//                                                 deviceStructs[idx].yBlocks, 
+//                                                 deviceStructs[idx].redOutput, 
+//                                                 deviceStructs[idx].greenOutput, 
+//                                                 deviceStructs[idx].blueOutput,
+//                                                 deviceStructs[idx].quantTable1, 
+//                                                 deviceStructs[idx].quantTable2, 
+//                                                 deviceStructs[idx].hf0codes, 
+//                                                 deviceStructs[idx].hf1codes, 
+//                                                 deviceStructs[idx].hf16codes, 
+//                                                 deviceStructs[idx].hf17codes, 
+//                                                 deviceStructs[idx].hf0lengths, 
+//                                                 deviceStructs[idx].hf1lengths, 
+//                                                 deviceStructs[idx].hf16lengths, 
+//                                                 deviceStructs[idx].hf17lengths
+//                                                 );
+//     }
+// }
 
 // Benchmark function for throughput measurement
 void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imagePaths) {
@@ -138,7 +108,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
     // Define batch size (adjust based on available memory)
-    size_t batchSize =  512; // Example batch size
+    size_t batchSize =  8; // Example batch size
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
     std::cout<< "num batches " << numBatches << " | numImages " << numImages << std::endl;
 
@@ -179,9 +149,15 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
             cudaEventCreate(&batchStop);
 
             cudaEventRecord(batchStart);
-            processImagesKernel<<<currentBatchSize, 1>>>(deviceStructs, currentBatchSize);
+            // processImagesKernel<<<currentBatchSize, 1>>>(deviceStructs, currentBatchSize);
+            batchDecodeKernel<<<currentBatchSize,64>>>(deviceStructs);
             cudaEventRecord(batchStop);
             cudaEventSynchronize(batchStop);
+            cudaDeviceSynchronize();
+            cudaError_t err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                printf("CUDA error: %s\n", cudaGetErrorString(err));
+            }
 
             // Calculate time for this batch
             float milliseconds = 0;
