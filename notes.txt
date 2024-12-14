@@ -1,3 +1,11 @@
+400 images of size 600 = cudaO is 72.3 MB/sec
+and zune is only 35.8 for this dataset and jpeglib is 49.68
+
+400 images of size 600  64 threads
+cudaO = 128.335M
+jpeglib = 49.9598
+zune = 35.96
+
 1101010111
 
 
