@@ -2,22 +2,103 @@
 
 __constant__ int initialZigzag[64]; 
 __device__ int global_sync_flag;
+__device__ int counter = 0;
 
-__global__ void myKernel(int size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        idx = idx; // Example operation
-    }
+
+__device__ int clip(int value) {
+    if (value < -256) return -256;
+    if (value > 255) return 255;
+    return value;
 }
 
-__global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
-{
-    int id = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (id < numThreads) {
-        double normCoeff = ((id / 8) == 0) ? (1.0 / sqrt(2.0)) : 1.0;
-        dIdctTable[id] = normCoeff * cos(((2.0 * (id%8) + 1.0) * (id/8) * M_PI) / 16.0);
+__device__ void idctRow(int* block) {
+    int x0, x1, x2, x3, x4, x5, x6, x7;
+
+    // Shortcut: if all AC terms are zero, directly scale the DC term
+    if (!((x1 = block[4]<<11) | (x2 = block[6]) | (x3 = block[2]) | (x4 = block[1]) | (x5 = block[7]) | (x6 = block[5]) | (x7 = block[3]))) {
+        block[0] = block[1] = block[2] = block[3] = block[4] = block[5] = block[6] = block[7] = block[0]<<3;
+        return;
     }
+    // Scale the DC coefficient
+    x0 = (block[0]<<11) + 128;
+
+    int x8 = C7 * (x4 + x5);
+    x4 = x8 + (C1 - C7) * x4;
+    x5 = x8 - (C1 + C7) * x5;
+    x8 = C3 * (x6 + x7);
+    x6 = x8 - (C3 - C5) * x6;
+    x7 = x8 - (C3 + C5) * x7;
+
+    x8 = x0 + x1;
+    x0 -= x1;
+    x1 = C6 * (x3 + x2);
+    x2 = x1 - (C2 + C6) * x2;
+    x3 = x1 + (C2 - C6) * x3;
+    x1 = x4 + x6;
+    x4 -= x6;
+    x6 = x5 + x7;
+    x5 -= x7;
+
+    x7 = x8 + x3;
+    x8 -= x3;
+    x3 = x0 + x2;
+    x0 -= x2;
+    x2 = (181 * (x4 + x5) + 128) >> 8;
+    x4 = (181 * (x4 - x5) + 128) >> 8;
+
+    block[0] = (x7 + x1) >> 8;
+    block[1] = (x3 + x2) >> 8;
+    block[2] = (x0 + x4) >> 8;
+    block[3] = (x8 + x6) >> 8;
+    block[4] = (x8 - x6) >> 8;
+    block[5] = (x0 - x4) >> 8;
+    block[6] = (x3 - x2) >> 8;
+    block[7] = (x7 - x1) >> 8;
+}
+
+__device__ void idctCol(int* block) {
+    int x0, x1, x2, x3, x4, x5, x6, x7;
+
+    // Shortcut: if all AC terms are zero, directly scale the DC term
+    if (!((x1 = (block[8*4]<<8)) | (x2 = block[8*6]) | (x3 = block[8*2]) | (x4 = block[8*1]) | (x5 = block[8*7]) | (x6 = block[8*5]) | (x7 = block[8*3]))) {
+        block[8*0] = block[8*1] = block[8*2] = block[8*3] = block[8*4] = block[8*5] = block[8*6] = block[8*7] = clip((block[8*0]+32)>>6);
+        return;
+    }
+    // Scale the DC coefficient
+    x0 = (block[8*0]<<8) + 8192;
+
+    int x8 = C7 * (x4 + x5) + 4;
+    x4 = (x8 + (C1 - C7) * x4) >> 3;
+    x5 = (x8 - (C1 + C7) * x5) >> 3;
+    x8 = C3 * (x6 + x7) + 4;
+    x6 = (x8 - (C3 - C5) * x6) >> 3;
+    x7 = (x8 - (C3 + C5) * x7) >> 3;
+    
+    x8 = x0 + x1;
+    x0 -= x1;
+    x1 = C6 * (x3 + x2) + 4;
+    x2 = (x1 - (C2 + C6) * x2) >> 3;
+    x3 = (x1 + (C2 - C6) * x3) >> 3;
+    x1 = x4 + x6;
+    x4 -= x6;
+    x6 = x5 + x7;
+    x5 -= x7;
+
+    x7 = x8 + x3;
+    x8 -= x3;
+    x3 = x0 + x2;
+    x0 -= x2;
+    x2 = (181 * (x4 + x5) + 128) >> 8;
+    x4 = (181 * (x4 - x5) + 128) >> 8;
+
+    block[8 * 0] = clip((x7 + x1) >> 14);
+    block[8 * 1] = clip((x3 + x2) >> 14);
+    block[8 * 2] = clip((x0 + x4) >> 14);
+    block[8 * 3] = clip((x8 + x6) >> 14);
+    block[8 * 4] = clip((x8 - x6) >> 14);
+    block[8 * 5] = clip((x0 - x4) >> 14);
+    block[8 * 6] = clip((x3 - x2) >> 14);
+    block[8 * 7] = clip((x7 - x1) >> 14);
 }
 
 JPEGParser::JPEGParser(std::string& imagePath) {
@@ -48,11 +129,6 @@ JPEGParser::JPEGParser(std::string& imagePath) {
 
     cudaMalloc((void**)&zigzag, 64 * sizeof(int));
     cudaMemcpyToSymbol(initialZigzag, zigzagEntries, sizeof(int) * 64);
-
-    int blockSize = 64;
-    int gridSize = (64 + blockSize - 1) / blockSize;
-    cudaMalloc((void**)&idctTable, 64 * sizeof(double));
-    initializeIDCTTableKernel<<<blockSize, gridSize>>>(idctTable, 64);
 }
 
 /* Function to allocate the GPU space. */
@@ -61,7 +137,7 @@ void JPEGParser::move() {
     if (err != cudaSuccess) {
         std::cerr << "CUDA malloc failed for hf0 codes: " << cudaGetErrorString(err) << std::endl;
     }
-    cudaMalloc((uint16_t**)&this->hf0codes, 256 * sizeof(uint16_t));
+    // cudaMalloc((uint16_t**)&this->hf0codes, 256 * sizeof(uint16_t));
     cudaMalloc((uint16_t**)&this->hf1codes, 256 * sizeof(uint16_t));
     cudaMalloc((uint16_t**)&this->hf16codes, 256 * sizeof(uint16_t));
     cudaMalloc((uint16_t**)&this->hf17codes, 256 * sizeof(uint16_t));
@@ -269,7 +345,9 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
 
     int decoded = decodeNumber(code, bits); 
     int dcCoeff = decoded + oldCoeff;
-    outBuffer[0] = dcCoeff * (int) quant[0];
+    //outBuffer[0] = dcCoeff * (int) quant[0];
+    // printf("dc %d %d %d\n", dcCoeff, (int) quant[0], dcCoeff * (int) quant[0]);
+    outBuffer[0] = dcCoeff;
 
     int length = 1;
     while (length < 64) {
@@ -288,7 +366,9 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
             decoded = decodeNumber(code, bits);
             int val;
             val = decoded * (int) quant[length];
-            outBuffer[length] = val;
+            //outBuffer[length] = val;
+            outBuffer[length] = decoded;
+            // printf("ac %d %d %d\n", decoded, (int) quant[length], decoded * (int) quant[length]);
             length++;
         }
     }
@@ -395,14 +475,6 @@ __device__ void performColorConversion(int* arr_l, int* arr_r, int* arr_y,
     }
 }
 
-__device__ void performIDCT(const int* zigzag, double* idctTable, int threadCol, int threadRow, double& localSum, int threshold) {
-    for (int u = 0; u < 8; u++) {
-        for (int v = 0; v < 8; v++) {
-            localSum += zigzag[threshold + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-        }
-    }
-}
-
 __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, 
                                 int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
                                 int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
@@ -423,27 +495,16 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
         global_sync_flag = 1; // Mark the serial work as complete
     }
 
+
     // Ensure all blocks wait until the serial work is done
-    // __shared__ bool is_serial_done; // Shared memory flag for threads in a block
     if (threadX == 0 && threadY == 0) {
-        // Check global flag in a single thread
         while (atomicAdd(&global_sync_flag, 0) == 0) {
             // Spin until the serial section is complete
         }
-        // is_serial_done = true; // Set the shared flag
     }
     __syncthreads(); // Synchronize all threads within the block
+    
 
-    // int threadId = blockIdx.x * blockDim.x + threadIdx.x;
-    // int pixelIndex = threadId;
-    // int totalPixels = width * height;
-
-    // if (threadId==0) {
-    //     performHuffmanDecoding(imageData, arr_l, arr_r, arr_y, quant1, quant2, 
-    //                            hf0codes, hf0lengths, hf16codes, hf16lengths, 
-    //                            hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
-    // }
-    // __syncthreads();
 
    // Shared memory for zigzag arrays
     __shared__ int sharedZigzag[3 * 64];
@@ -453,6 +514,7 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
 
     int globalBlockIndex = blockIdx.y * gridDim.x + blockIdx.x;
     int blockStart = globalBlockIndex * 64;
+    
 
     // Identify the thread's position in the 8x8 grid
     int threadRow = threadIdx.y; // Row index (0-7)
@@ -462,34 +524,57 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     // Calculate the global index for this thread
     int globalIndex = blockStart + threadIndexInBlock;
 
-    if (threadCol < validWidth && threadRow < validHeight) {
-        zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
-    } else {
-        zigzag_l[threadIndexInBlock] = 0;
-        zigzag_r[threadIndexInBlock] = 0;
-        zigzag_y[threadIndexInBlock] = 0;
+    // zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
+    // zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
+    // zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
+
+    zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]] * (int) quant1[initialZigzag[threadIndexInBlock]];
+    zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]] * (int) quant2[initialZigzag[threadIndexInBlock]];
+    zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]] * (int) quant2[initialZigzag[threadIndexInBlock]];
+
+    __syncthreads();
+
+    // if (threadIndexInBlock == 0 && globalBlockIndex < 192) {
+    //     printf("%d %d %d \n", zigzag_l[threadIndexInBlock], (int) quant1[threadIndexInBlock], zigzag_l[threadIndexInBlock]*(int) quant1[threadIndexInBlock]);
+    //     // counter++;
+    // }
+
+    if (threadCol == 0) {
+        idctRow(zigzag_l + threadIndexInBlock);
+        idctRow(zigzag_r + threadIndexInBlock);
+        idctRow(zigzag_y + threadIndexInBlock);
     }
 
     __syncthreads();
 
-    if (threadCol < validWidth && threadRow < validHeight) {
-        double localSum_l = 0.0;
-        double localSum_r = 0.0;
-        double localSum_y = 0.0;
-        for (int u = 0; u < 8; u++) {
-            for (int v = 0; v < 8; v++) {
-                localSum_l += zigzag_l[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_r += zigzag_r[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_y += zigzag_y[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-            }
-        }
 
-        arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0)); //luminuous
-        arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0)); //chromyel
-        arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0)); // chromred
+    if (threadRow == 0) {
+        idctCol(zigzag_l + threadIndexInBlock);
+        idctCol(zigzag_r + threadIndexInBlock);
+        idctCol(zigzag_y + threadIndexInBlock);
+        
     }
+
+    __syncthreads();
+    arr_l[globalIndex] = zigzag_l[threadIndexInBlock];
+    arr_r[globalIndex] = zigzag_r[threadIndexInBlock];
+    arr_y[globalIndex] = zigzag_y[threadIndexInBlock];
+    // if (threadCol < validWidth && threadRow < validHeight) {
+    //     double localSum_l = 0.0;
+    //     double localSum_r = 0.0;
+    //     double localSum_y = 0.0;
+    //     for (int u = 0; u < 8; u++) {
+    //         for (int v = 0; v < 8; v++) {
+    //             localSum_l += zigzag_l[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+    //             localSum_r += zigzag_r[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+    //             localSum_y += zigzag_y[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
+    //         }
+    //     }
+
+    //     arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0)); //luminuous
+    //     arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0)); //chromyel
+    //     arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0)); // chromred
+    // }
 
     __syncthreads();
 
@@ -571,7 +656,7 @@ void JPEGParser::write() {
     cudaFree(blueOutput);
 
     // Writing the decoded channels to a file instead of displaying using opencv
-    fs::path output_dir = "../testing/cudaU_output_arrays"; // Change the directory name here for future CUDA implementations
+    fs::path output_dir = "../testing/cudaUF_output_arrays"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / this->filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);
