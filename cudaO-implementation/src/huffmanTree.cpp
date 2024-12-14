@@ -18,6 +18,8 @@ HuffmanTree::HuffmanTree(uint8_t* bytes) {
 
 HuffmanTree::~HuffmanTree() {
     clearTree(this->root);
+    delete[] codes;
+    delete[] codeLengths;
 }
 
 // Creates the nodes for the characters.
@@ -26,7 +28,7 @@ void HuffmanTree::createNodes() {
     char* lengths = new char[16]; 
     std::memcpy(lengths, bytes, 16);
     int offset = 16;
-
+    
     for (int i = 0; i < 16; i++) {
         char curLength = lengths[i];
         for (int j = 0; j < curLength; j++) {
@@ -34,6 +36,7 @@ void HuffmanTree::createNodes() {
             this->nodes.push_back(new HuffmanTreeNode(curVal, i+1, true));
         }
     }
+    delete[] lengths;
 }
 
 // Create codes for the tree
@@ -72,6 +75,8 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
         if (i == 0) {
             if (root->left == NULL) {
                 root->left = internalNode;
+            } else {
+                delete internalNode;
             }
             if (this->addToTree(root->left, node, position-1)) {
                 return true;
@@ -79,6 +84,8 @@ bool HuffmanTree::addToTree(HuffmanTreeNode* root, HuffmanTreeNode* node, int po
         } else {
             if (root->right == NULL) {
                 root->right = internalNode;
+            } else {
+                delete internalNode;
             }
             if (this->addToTree(root->right, node, position - 1)) {
                 return true;

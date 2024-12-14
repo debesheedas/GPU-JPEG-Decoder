@@ -19,7 +19,13 @@
 #endif
 
 const std::vector<uint16_t> MARKERS = {0xffd8, 0xffe0, 0xffdb, 0xffc0, 0xffc4, 0xffda};
-__global__ void myKernel(int size);
+const int C1 = 2841; // 2048*sqrt(2)*cos(1*pi/16)
+const int C2 = 2676; // 2048*sqrt(2)*cos(2*pi/16)
+const int C3 = 2408; // 2048*sqrt(2)*cos(3*pi/16)
+const int C5 = 1609; // 2048*sqrt(2)*cos(5*pi/16)
+const int C6 = 1108; // 2048*sqrt(2)*cos(6*pi/16)
+const int C7 = 565;  // 2048*sqrt(2)*cos(7*pi/16)
+
 __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, 
                                 int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
                                 int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 

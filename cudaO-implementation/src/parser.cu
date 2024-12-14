@@ -98,16 +98,6 @@ __device__ void idctCol(int* block) {
     block[8 * 7] = clip((x7 - x1) >> 14);
 }
 
-__global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
-{
-    int id = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (id < numThreads) {
-        double normCoeff = ((id / 8) == 0) ? (1.0 / sqrt(2.0)) : 1.0;
-        dIdctTable[id] = normCoeff * cos(((2.0 * (id%8) + 1.0) * (id/8) * M_PI) / 16.0);
-    }
-}
-
 JPEGParser::JPEGParser(std::string& imagePath) {
     // Extract the file name of the image file from the file path
     fs::path file_path(imagePath);
@@ -136,11 +126,6 @@ JPEGParser::JPEGParser(std::string& imagePath) {
 
     cudaMalloc((void**)&zigzag, 64 * sizeof(int));
     cudaMemcpyToSymbol(initialZigzag, zigzagEntries, sizeof(int) * 64);
-
-    int blockSize = 64;
-    int gridSize = (64 + blockSize - 1) / blockSize;
-    cudaMalloc((void**)&idctTable, 64 * sizeof(double));
-    initializeIDCTTableKernel<<<blockSize, gridSize>>>(idctTable, 64);
 }
 
 /* Function to allocate the GPU space. */
@@ -201,6 +186,7 @@ void JPEGParser::extract() {
             stream->getNBytes(host_quantTable1, 64);
             cudaMalloc((void**)&this->quantTable1, 64 * sizeof(uint8_t));
             cudaMemcpy(this->quantTable1, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
+            delete[] host_quantTable1;
 
             if(stream->getMarker() == MARKERS[2]) {
                 stream->getMarker();
@@ -210,7 +196,7 @@ void JPEGParser::extract() {
                 stream->getNBytes(host_quantTable2, 64);
                 cudaMalloc((void**)&this->quantTable2, 64 * sizeof(uint8_t));
                 cudaMemcpy(this->quantTable2, host_quantTable2, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
-                
+                delete[] host_quantTable2;
             } else {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
@@ -284,6 +270,7 @@ void JPEGParser::extract() {
             imageDataLength--; // We remove the ending byte because it is extra 0xff.
             cudaMalloc((void**)&this->imageData, imageDataLength * sizeof(uint8_t));
             cudaMemcpy(this->imageData, host_imageData, imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice);
+            delete[] host_imageData;
             break;
         }
     } 
@@ -346,14 +333,24 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
 }
 
 JPEGParser::~JPEGParser() {
-    cudaFree(idctTable);
-    // delete channels;
-    for (auto& tree : huffmanTrees) {
-        delete tree.second;
-    }
-    cudaFree(this->quantTable1);
-    cudaFree(this->quantTable2);
-    cudaFree(this->imageData);
+    if (quantTable1) cudaFree(quantTable1);
+    if (quantTable2) cudaFree(quantTable2);
+    if (imageData) cudaFree(imageData);
+    if (luminous) cudaFree(luminous);
+    if (chromRed) cudaFree(chromRed);
+    if (chromYel) cudaFree(chromYel);
+    if (zigzag_l) cudaFree(zigzag_l);
+    if (zigzag_r) cudaFree(zigzag_r);
+    if (zigzag_y) cudaFree(zigzag_y);
+    if (hf0codes) cudaFree(hf0codes);
+    if (hf1codes) cudaFree(hf1codes);
+    if (hf16codes) cudaFree(hf16codes);
+    if (hf17codes) cudaFree(hf17codes);
+    if (hf0lengths) cudaFree(hf0lengths);
+    if (hf1lengths) cudaFree(hf1lengths);
+    if (hf16lengths) cudaFree(hf16lengths);
+    if (hf17lengths) cudaFree(hf17lengths); 
+
     delete[]  this->readBytes;
     delete[]  this->applicationHeader;
     delete[]  this->startOfFrame;
@@ -362,6 +359,12 @@ JPEGParser::~JPEGParser() {
     delete[]  this->huffmanTable2;
     delete[]  this->huffmanTable3;
     delete[]  this->huffmanTable4;
+    for (auto& tree : huffmanTrees) {
+        delete tree.second;
+    }
+    if (this->channels) {
+        delete this->channels;
+    }
 }
 
 __device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y,
@@ -428,14 +431,6 @@ __device__ void performColorConversion(int* arr_l, int* arr_r, int* arr_y,
     }
 }
 
-__device__ void performIDCT(const int* zigzag, double* idctTable, int threadCol, int threadRow, double& localSum, int threshold) {
-    for (int u = 0; u < 8; u++) {
-        for (int v = 0; v < 8; v++) {
-            localSum += zigzag[threshold + v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-        }
-    }
-}
-
 __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, int* zigzag_l, int* zigzag_r, 
                                 int* zigzag_y, double* idctTable, int validHeight, 
                                 int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
@@ -444,9 +439,6 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
                                 int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths) {
 
     int threadId = blockIdx.x * blockDim.x + threadIdx.x;
-    // printf("blockdim.x %d\n", blockDim.x);
-    // printf("blockidx.x %d\n", blockIdx.x);
-    // printf("threadidx.x %d\n", threadIdx.x);
 
     int pixelIndex = threadId;
     int totalPixels = width * height;
@@ -472,10 +464,7 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
 
     pixelIndex = threadId;
 
-    while (pixelIndex * 8 < totalPixels) {
-        // int threadIndexInBlock = pixelIndex % 64;
-        // int blockIndex = pixelIndex / 64;
-        
+    while (pixelIndex * 8 < totalPixels) {        
         idctRow(zigzag_l + pixelIndex * 8);
         idctRow(zigzag_r + pixelIndex * 8);
         idctRow(zigzag_y + pixelIndex * 8);
@@ -488,10 +477,6 @@ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* ar
     pixelIndex = threadId;
 
      while (pixelIndex * 8 < totalPixels) {
-        // int threadIndexInBlock = pixelIndex % 64;
-        // int blockIndex = pixelIndex / 64;
-
-
         int start = pixelIndex / 8;
         start = start * 64;
         start = start + (pixelIndex % 8);
@@ -517,13 +502,6 @@ __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr
                                 int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
                                 uint16_t* hf0codes, uint16_t* hf1codes, uint16_t* hf16codes, uint16_t* hf17codes,
                                 int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths, int threadId, int blockSize) {
-
-    // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
-    //int threadId = threadIdx.x;
-    // printf("blockdim.x %d\n", blockDim.x);
-    // printf("blockidx.x %d\n", blockIdx.x);
-    // printf("threadidx.x %d\n", threadIdx.x);
-
     int pixelIndex = threadId;
     int totalPixels = width * height;
 
@@ -548,10 +526,7 @@ __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr
 
     pixelIndex = threadId;
 
-    while (pixelIndex * 8 < totalPixels) {
-        // int threadIndexInBlock = pixelIndex % 64;
-        // int blockIndex = pixelIndex / 64;
-        
+    while (pixelIndex * 8 < totalPixels) {        
         idctRow(zigzag_l + pixelIndex * 8);
         idctRow(zigzag_r + pixelIndex * 8);
         idctRow(zigzag_y + pixelIndex * 8);
@@ -564,10 +539,6 @@ __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr
     pixelIndex = threadId;
 
      while (pixelIndex * 8 < totalPixels) {
-        // int threadIndexInBlock = pixelIndex % 64;
-        // int blockIndex = pixelIndex / 64;
-
-
         int start = pixelIndex / 8;
         start = start * 64;
         start = start + (pixelIndex % 8);
@@ -624,19 +595,6 @@ void JPEGParser::decode() {
                                             this->width, this->height, this->xBlocks, this->yBlocks, this->redOutput, this->greenOutput, this->blueOutput,
                                             this->quantTable1, this->quantTable2, this->hf0codes, this->hf1codes, this->hf16codes, this->hf17codes, 
                                             this->hf0lengths, this->hf1lengths, this->hf16lengths, this->hf17lengths);
-
-
-    if (luminous) cudaFree(luminous);
-    if (chromRed) cudaFree(chromRed);
-    if (chromYel) cudaFree(chromYel);
-    if (hf0codes) cudaFree(hf0codes);
-    if (hf1codes) cudaFree(hf1codes);
-    if (hf16codes) cudaFree(hf16codes);
-    if (hf17codes) cudaFree(hf17codes);
-    if (hf0lengths) cudaFree(hf0lengths);
-    if (hf1lengths) cudaFree(hf1lengths);
-    if (hf16lengths) cudaFree(hf16lengths);
-    if (hf17lengths) cudaFree(hf17lengths); 
 }
 
 void JPEGParser::write() {

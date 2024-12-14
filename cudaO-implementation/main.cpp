@@ -12,5 +12,6 @@ int main(int argc, char* argv[]) {
     parser->extract();
     parser->decode();
     parser->write();
+    delete parser;
     return 0;
 }

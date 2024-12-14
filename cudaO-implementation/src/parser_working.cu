@@ -1,4 +1,4 @@
-#include "parser.h"
+// #include "parser.h"
 
 __constant__ int initialZigzag[64]; 
 

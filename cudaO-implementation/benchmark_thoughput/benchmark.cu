@@ -108,7 +108,8 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
     // Define batch size (adjust based on available memory)
-    size_t batchSize =  8; // Example batch size
+    size_t batchSize = 400; // Example batch size
+    int threads = 64; 
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
     std::cout<< "num batches " << numBatches << " | numImages " << numImages << std::endl;
 
@@ -150,7 +151,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
 
             cudaEventRecord(batchStart);
             // processImagesKernel<<<currentBatchSize, 1>>>(deviceStructs, currentBatchSize);
-            batchDecodeKernel<<<currentBatchSize,64>>>(deviceStructs);
+            batchDecodeKernel<<<currentBatchSize,threads>>>(deviceStructs);
             cudaEventRecord(batchStop);
             cudaEventSynchronize(batchStop);
             cudaDeviceSynchronize();
