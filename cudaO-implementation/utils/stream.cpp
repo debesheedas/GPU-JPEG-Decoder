@@ -1,6 +1,6 @@
 #include "stream.h"
 
-Stream::Stream(uint8_t* data) {
+Stream::Stream(std::vector<uint8_t>& data) {
     this->data = data;
     this->position = 0;
 }
@@ -35,7 +35,7 @@ uint16_t Stream::getMarker() {
     return (firstByte << 8) | secondByte;
 }
 
-void Stream::getNBytes(uint8_t* arr, int length) {
+void Stream::getNBytes(std::vector<uint8_t>& arr, int length) {
     for (int i = 0; i < length; i++) {
         arr[i] = this->getByte();
     }
