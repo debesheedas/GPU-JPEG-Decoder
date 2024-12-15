@@ -2,8 +2,11 @@
 #include "huffmanTree.h"
 
 // Constructor for HuffmanTree
-HuffmanTree::HuffmanTree(uint8_t* bytes) {
-    this->bytes = bytes;
+HuffmanTree::HuffmanTree(std::vector<uint8_t>& bytes) {
+    for (int i = 0; i < bytes.size(); i++) {
+        this->bytes.push_back(bytes[i]);
+    }
+    // this->bytes = bytes;
     this->createNodes();
     this->root = new HuffmanTreeNode(0,0,false);
     this->codes = new uint16_t[256];
@@ -16,17 +19,19 @@ HuffmanTree::HuffmanTree(uint8_t* bytes) {
     this->createCodes(this->root, 0, 0);
 }
 
-HuffmanTree::~HuffmanTree() {
-    clearTree(this->root);
-    delete[] codes;
-    delete[] codeLengths;
-}
+// HuffmanTree::~HuffmanTree() {
+//     clearTree(this->root);
+//     delete[] codes;
+//     delete[] codeLengths;
+// }
 
 // Creates the nodes for the characters.
 void HuffmanTree::createNodes() {
     // Extracting the length information.
-    char* lengths = new char[16]; 
-    std::memcpy(lengths, bytes, 16);
+    char lengths[16]; 
+    for (int i = 0; i < 16; i++) {
+        lengths[i] = bytes[i];
+    }
     int offset = 16;
     
     for (int i = 0; i < 16; i++) {
@@ -36,7 +41,6 @@ void HuffmanTree::createNodes() {
             this->nodes.push_back(new HuffmanTreeNode(curVal, i+1, true));
         }
     }
-    delete[] lengths;
 }
 
 // Create codes for the tree

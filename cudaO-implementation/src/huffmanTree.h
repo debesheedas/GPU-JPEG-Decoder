@@ -32,7 +32,7 @@ struct HuffmanTreeNode {
 */
 class HuffmanTree {
     std::vector<HuffmanTreeNode*> nodes;
-    uint8_t* bytes;
+    std::vector<uint8_t> bytes;
     HuffmanTreeNode* root;
     std::unordered_map<uint8_t, std::string> codesString;
 
@@ -43,8 +43,8 @@ class HuffmanTree {
     void createCodes(HuffmanTreeNode* node, uint16_t value, int length);
     
     public:
-        HuffmanTree(uint8_t* bytes);
-        ~HuffmanTree();
+        HuffmanTree(std::vector<uint8_t>& bytes);
+        // ~HuffmanTree();
         std::unordered_map<uint8_t, std::string> getCodes();
         uint8_t traverseTree(HuffmanTreeNode* cur, Stream* st);
         uint8_t getCode(Stream* st);
