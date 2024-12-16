@@ -3,14 +3,9 @@
 
 // Constructor for HuffmanTree
 HuffmanTree::HuffmanTree(std::vector<uint8_t>& bytes) {
-    for (int i = 0; i < bytes.size(); i++) {
-        this->bytes.push_back(bytes[i]);
-    }
-    // this->bytes = bytes;
+    this->bytes = bytes;
     this->createNodes();
     this->root = new HuffmanTreeNode(0,0,false);
-    this->codes = new uint16_t[256];
-    this->codeLengths = new int[256];
 
     for(const auto& n: this->nodes) {
         this->addToTree(this->root, n, n->length);
