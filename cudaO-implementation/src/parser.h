@@ -52,8 +52,8 @@ const int C7 = 565;  // 2048*sqrt(2)*cos(7*pi/16)
 //                                 int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths);
 
 __global__ void batchDecodeKernel(DeviceData* deviceStructs);
-__device__ void decodeImage(uint8_t* imageData, int* yCrCbChannels, int* rgbChannels, int* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize);
-void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int*& yCrCbChannels, int*& rgbChannels, int*& outputChannels, int width, int height, int*& zigzagLocations);
+__device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize);
+void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height, int*& zigzagLocations);
 void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees);
 void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int*& yCrCbChannels, int*& rgbChannels, int*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees);
 /*
@@ -71,17 +71,17 @@ const int zigzagEntries[64] = {
     };
 
 struct ImageChannels {
-    std::vector<std::vector<int>> channels;
+    std::vector<std::vector<int16_t>> channels;
 
     ImageChannels(int size)
-        : channels(6, std::vector<int>(size)) {}  // 6 channels, each with `size` elements
+        : channels(6, std::vector<int16_t>(size)) {}  // 6 channels, each with `size` elements
 
     // Accessor methods to get a reference to a specific channel
-    std::vector<int>& getY() { return channels[0]; }
-    std::vector<int>& getCr() { return channels[1]; }
-    std::vector<int>& getCb() { return channels[2]; }
-    std::vector<int>& getR() { return channels[3]; }
-    std::vector<int>& getG() { return channels[4]; }
-    std::vector<int>& getB() { return channels[5]; }
+    std::vector<int16_t>& getY() { return channels[0]; }
+    std::vector<int16_t>& getCr() { return channels[1]; }
+    std::vector<int16_t>& getCb() { return channels[2]; }
+    std::vector<int16_t>& getR() { return channels[3]; }
+    std::vector<int16_t>& getG() { return channels[4]; }
+    std::vector<int16_t>& getB() { return channels[5]; }
 };
 
