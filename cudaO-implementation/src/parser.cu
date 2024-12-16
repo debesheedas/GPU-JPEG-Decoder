@@ -1,7 +1,5 @@
 #include "parser.h"
 
-__constant__ int zigzagLocations[64]; 
-
 __device__ int clip(int value) {
     if (value < -256) return -256;
     if (value > 255) return 255;
@@ -105,7 +103,7 @@ void checkCudaError(cudaError_t err, const char* msg) {
 }
 
 /* Function to allocate the GPU space. */
-void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int*& yCrCbChannels, int*& rgbChannels, int*& outputChannels, int width, int height) {
+void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int*& yCrCbChannels, int*& rgbChannels, int*& outputChannels, int width, int height, int*& zigzagLocations) {
 
     const size_t codeSize = 256 * sizeof(uint16_t);
     const size_t lengthSize = 256 * sizeof(int);
@@ -113,6 +111,9 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
 
     checkCudaError(cudaMalloc((void**)&hfCodes, codeSize * 4), "Failed to allocate device memory for huffman codes.");
     checkCudaError(cudaMalloc((void**)&hfLengths, lengthSize * 4), "Failed to allocate device memory for huffman lengths.");
+
+    checkCudaError(cudaMalloc((void**)&zigzagLocations, 256 * sizeof(int)), "Failed to allocate device memory for zigzag table.");
+    checkCudaError(cudaMemcpy(zigzagLocations, zigzagEntries, sizeof(int) * 64, cudaMemcpyHostToDevice), "Failed to copy entries for the zigzag table.");
 
     int index = 0;
 
@@ -313,7 +314,7 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int* yCrCbChannels, u
 }
 
 __device__ void performZigzagReordering(int* yCrCbChannels, int* rgbChannels, uint8_t* quantTables,
-                                        int blockIndex, int threadIndexInBlock, int threadId, int pixelIndex, int totalPixels) {
+                                        int blockIndex, int threadIndexInBlock, int threadId, int pixelIndex, int totalPixels, int* zigzagLocations) {
     rgbChannels[pixelIndex] = yCrCbChannels[blockIndex * 64 + zigzagLocations
 [threadIndexInBlock]] * quantTables[zigzagLocations
 [threadIndexInBlock]];
@@ -356,9 +357,14 @@ __device__ void performColorConversion(int* rgbChannels, int* outputChannels,
     }
 }
 
-__global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbChannels, int* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths) {
+__global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbChannels, int* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations) {
+
+    __shared__ int zigzagMap[256];
 
     int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    zigzagMap[threadId] = zigzagLocations[threadId];
+
+    __syncthreads();
 
     int pixelIndex = threadId;
     int totalPixels = width * height;
@@ -372,7 +378,7 @@ __global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbCha
         int blockIndex = pixelIndex / 64;
 
         performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
-                                blockIndex, threadIndexInBlock, threadId, pixelIndex, totalPixels);
+                                blockIndex, threadIndexInBlock, threadId, pixelIndex, totalPixels, zigzagMap);
 
         pixelIndex += blockDim.x * gridDim.x;
     }
@@ -544,26 +550,13 @@ int main(int argc, char* argv[]) {
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
     input.close();
 
-    int zigzagEntries[64] = {
-        0, 1, 5, 6, 14, 15, 27, 28,
-        2, 4, 7, 13, 16, 26, 29, 42,
-        3, 8, 12, 17, 25, 30, 41, 43,
-        9, 11, 18, 24, 31, 40, 44, 53,
-        10, 19, 23, 32, 39, 45, 52, 54,
-        20, 22, 33, 38, 46, 51, 55, 60,
-        21, 34, 37, 47, 50, 56, 59, 61,
-        35, 36, 48, 49, 57, 58, 62, 63
-    };
-
-    checkCudaError(cudaMalloc((void**)&zigzagLocations, 64 * sizeof(int)), "Failed to allocate device memory for zigzag table.");
-    checkCudaError(cudaMemcpyToSymbol(zigzagLocations, zigzagEntries, sizeof(int) * 64), "Failed to copy entries for the zigzag table.");
-
     uint16_t* hfCodes; 
     int* hfLengths;
     uint8_t* quantTables;
     int* yCrCbChannels;
     int* rgbChannels;
     int* outputChannels;
+    int* zigzagLocations;
 
     uint8_t* imageData;
     int width = 0;
@@ -573,8 +566,8 @@ int main(int argc, char* argv[]) {
     // Extracting the byte chunks
     extract(bytes, quantTables, imageData, width, height, huffmanTrees);
     // Allocating memory for the arrays
-    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height);
-    decodeKernel<<<1, 256>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths);
+    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
+    decodeKernel<<<1, 256>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
     
     cudaDeviceSynchronize();
     write(outputChannels, width, height, filename);
