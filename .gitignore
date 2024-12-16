@@ -10,6 +10,7 @@ image-data.zip
 /benchmarking_dataset
 /benchmarking_dataset_old
 /benchmarking_dataset_mini
+/benchmarking_dataset_through
 */images/
 *.array
 */benchmarking_dataset/build
