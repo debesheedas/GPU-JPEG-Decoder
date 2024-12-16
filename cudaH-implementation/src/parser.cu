@@ -307,6 +307,7 @@ void performHuffmanDecoding(std::vector<uint8_t> imageData, int16_t* yCrCbChanne
     //     // printf("%d %d %d\n",  arr_l[i], arr_r[i], arr_y[i]);
     // }
     checkCudaError(cudaMemcpy(yCrCbChannels, host_yCrCbChannels.data(), sizeof(int16_t) * host_yCrCbChannels.size(), cudaMemcpyHostToDevice), "Failed to copy entries for the zigzag table.");
+    delete imageStream;
 }
 
 __device__ void performZigzagReordering(int16_t* yCrCbChannels, int16_t* rgbChannels, uint8_t* quantTables,
