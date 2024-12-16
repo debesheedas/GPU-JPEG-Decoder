@@ -274,14 +274,6 @@ __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
 
     outBuffer[0] = dcCoeff;
 
-    if (dcCoeff > 32767) {
-        printf("dc coeff is larger \n");
-    }
-
-    if (decoded > 32767) {
-        printf("decoded is larger \n");
-    }
-
     int length = 1;
     while (length < 64) {
         match_huffman_code(imageData, bitOffset, acHfcodes, acHflengths, code, code_length);
