@@ -365,10 +365,83 @@ __device__ void performColorConversion(int* rgbChannels, int* outputChannels,
 }
 
 __global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbChannels, int* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations) {
+    int imageId = blockIdx.x;
+    int threadId = threadIdx.x;
+    int blockSize = blockDim.x;
+    decodeImage(imageData,
+                yCrCbChannels,
+                rgbChannels,
+                outputChannels,
+                width,
+                height,
+                quantTables,
+                hfCodes,
+                hfLengths,
+                zigzagLocations,
+                threadId, blockSize);
+
+    // __shared__ int zigzagMap[256];
+
+    // int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    // zigzagMap[threadId] = zigzagLocations[threadId];
+
+    // __syncthreads();
+
+    // int pixelIndex = threadId;
+    // int totalPixels = width * height;
+    // if (threadId==0) {
+    //     performHuffmanDecoding(imageData, yCrCbChannels, hfCodes, hfLengths, width, height);
+    // }
+    // __syncthreads();
+
+    // while (pixelIndex < totalPixels) {
+    //     int threadIndexInBlock = pixelIndex % 64;
+    //     int blockIndex = pixelIndex / 64;
+
+    //     performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
+    //                             blockIndex, threadIndexInBlock, threadId, pixelIndex, totalPixels, zigzagMap);
+
+    //     pixelIndex += blockDim.x * gridDim.x;
+    // }
+
+    // __syncthreads();
+
+    // pixelIndex = threadId;
+
+    // while (pixelIndex * 8 < totalPixels) {        
+    //     idctRow(rgbChannels + pixelIndex * 8);
+    //     idctRow(rgbChannels + totalPixels + pixelIndex * 8);
+    //     idctRow(rgbChannels + 2*totalPixels + pixelIndex * 8);
+
+    //     pixelIndex += blockDim.x * gridDim.x;
+    // }
+
+    // __syncthreads();
+
+    // pixelIndex = threadId;
+
+    //  while (pixelIndex * 8 < totalPixels) {
+    //     int start = pixelIndex / 8;
+    //     start = start * 64;
+    //     start = start + (pixelIndex % 8);
+        
+    //     idctCol(rgbChannels + start);
+    //     idctCol(rgbChannels + totalPixels + start);
+    //     idctCol(rgbChannels + 2*totalPixels + start);
+
+    //     pixelIndex += blockDim.x * gridDim.x;
+    // }
+    // __syncthreads();
+
+    // // Iterate over pixels handled by this thread
+    // performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockDim.x * gridDim.x);
+}
+
+__device__ void decodeImage(uint8_t* imageData, int* yCrCbChannels, int* rgbChannels, int* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
 
     __shared__ int zigzagMap[256];
 
-    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    // int threadId = blockIdx.x * blockDim.x + threadIdx.x;
     zigzagMap[threadId] = zigzagLocations[threadId];
 
     __syncthreads();
@@ -387,7 +460,8 @@ __global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbCha
         performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
                                 blockIndex, threadIndexInBlock, threadId, pixelIndex, totalPixels, zigzagMap);
 
-        pixelIndex += blockDim.x * gridDim.x;
+        // pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
     }
 
     __syncthreads();
@@ -399,7 +473,8 @@ __global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbCha
         idctRow(rgbChannels + totalPixels + pixelIndex * 8);
         idctRow(rgbChannels + 2*totalPixels + pixelIndex * 8);
 
-        pixelIndex += blockDim.x * gridDim.x;
+        // pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
     }
 
     __syncthreads();
@@ -415,109 +490,32 @@ __global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbCha
         idctCol(rgbChannels + totalPixels + start);
         idctCol(rgbChannels + 2*totalPixels + start);
 
-        pixelIndex += blockDim.x * gridDim.x;
+        // pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
     }
     __syncthreads();
 
     // Iterate over pixels handled by this thread
-    performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockDim.x * gridDim.x);
+    performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
 }
 
-
-
-// __device__ void decodeImage(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, int* zigzag_l, int* zigzag_r, 
-//                                 int* zigzag_y, double* idctTable, int validHeight, 
-//                                 int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
-//                                 int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
-//                                 uint16_t* hf0codes, uint16_t* hf1codes, uint16_t* hf16codes, uint16_t* hf17codes,
-//                                 int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths, int threadId, int blockSize) {
-//     int pixelIndex = threadId;
-//     int totalPixels = width * height;
-
-//     if (threadId==0) {
-//         performHuffmanDecoding(imageData, arr_l, arr_r, arr_y, quant1, quant2, 
-//                                hf0codes, hf0lengths, hf16codes, hf16lengths, 
-//                                hf1codes, hf1lengths, hf17codes, hf17lengths, yBlocks, xBlocks);
-//     }
-//     __syncthreads();
-
-//     while (pixelIndex < totalPixels) {
-//         int threadIndexInBlock = pixelIndex % 64;
-//         int blockIndex = pixelIndex / 64;
-
-//         performZigzagReordering(arr_l, arr_r, arr_y, zigzag_l, zigzag_r, zigzag_y,
-//                                 blockIndex, threadIndexInBlock, threadId, zigzagLocations, pixelIndex, quant1, quant2);
-
-//         pixelIndex += blockSize;
-//     }
-
-//     __syncthreads();
-
-//     pixelIndex = threadId;
-
-//     while (pixelIndex * 8 < totalPixels) {        
-//         idctRow(zigzag_l + pixelIndex * 8);
-//         idctRow(zigzag_r + pixelIndex * 8);
-//         idctRow(zigzag_y + pixelIndex * 8);
-
-//         pixelIndex += blockSize;
-//     }
-
-//     __syncthreads();
-
-//     pixelIndex = threadId;
-
-//      while (pixelIndex * 8 < totalPixels) {
-//         int start = pixelIndex / 8;
-//         start = start * 64;
-//         start = start + (pixelIndex % 8);
-        
-//         idctCol(zigzag_l + start);
-//         idctCol(zigzag_r + start);
-//         idctCol(zigzag_y + start);
-
-//         pixelIndex += blockSize;
-//     }
-//     __syncthreads();
-
-//     // Iterate over pixels handled by this thread
-//     performColorConversion(zigzag_l, zigzag_r, zigzag_y, redOutput, greenOutput, blueOutput, 
-//                            totalPixels, width, threadId, blockSize);
-// }
-
-// __global__ void batchDecodeKernel(JPEGParserData* deviceStructs) {
-//     // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
-//     int imageId = blockIdx.x;
-//     int threadId = threadIdx.x;
-//     int blockSize = blockDim.x;
-//     decodeImage(deviceStructs[imageId].imageData, 
-//                 deviceStructs[imageId].luminous, 
-//                 deviceStructs[imageId].chromRed, 
-//                 deviceStructs[imageId].chromYel, 
-//                 deviceStructs[imageId].zigzag_l,
-//                 deviceStructs[imageId].zigzag_r,
-//                 deviceStructs[imageId].zigzag_y, 
-//                 deviceStructs[imageId].idctTable, 
-//                 8, 8,  
-//                 deviceStructs[imageId].width, 
-//                 deviceStructs[imageId].height, 
-//                 deviceStructs[imageId].xBlocks, 
-//                 deviceStructs[imageId].yBlocks, 
-//                 deviceStructs[imageId].redOutput, 
-//                 deviceStructs[imageId].greenOutput, 
-//                 deviceStructs[imageId].blueOutput,
-//                 deviceStructs[imageId].quantTable1, 
-//                 deviceStructs[imageId].quantTable2, 
-//                 deviceStructs[imageId].hf0codes, 
-//                 deviceStructs[imageId].hf1codes, 
-//                 deviceStructs[imageId].hf16codes, 
-//                 deviceStructs[imageId].hf17codes, 
-//                 deviceStructs[imageId].hf0lengths, 
-//                 deviceStructs[imageId].hf1lengths, 
-//                 deviceStructs[imageId].hf16lengths, 
-//                 deviceStructs[imageId].hf17lengths,
-//                 threadId, blockSize);
-// }
+__global__ void batchDecodeKernel(DeviceData* deviceStructs) {
+    // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
+    int imageId = blockIdx.x;
+    int threadId = threadIdx.x;
+    int blockSize = blockDim.x;
+    decodeImage(deviceStructs[imageId].imageData,
+                deviceStructs[imageId].yCrCbChannels,
+                deviceStructs[imageId].rgbChannels,
+                deviceStructs[imageId].outputChannels,
+                deviceStructs[imageId].width,
+                deviceStructs[imageId].height,
+                deviceStructs[imageId].quantTables,
+                deviceStructs[imageId].hfCodes,
+                deviceStructs[imageId].hfLengths,
+                deviceStructs[imageId].zigzagLocations,
+                threadId, blockSize);
+}
 
 void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int*& yCrCbChannels, int*& rgbChannels, int*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {
     // Freeing the memory
@@ -585,6 +583,9 @@ int main(int argc, char* argv[]) {
     extract(imagePath, quantTables, imageData, width, height, huffmanTrees);
     // Allocating memory for the arrays
     allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
+    
+    // decodeKernel<<<1, 256>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
+
     decodeKernel<<<1, 256>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
     
     cudaDeviceSynchronize();
