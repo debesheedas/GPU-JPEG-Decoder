@@ -269,7 +269,7 @@ __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
     bitOffset += code_length;
     uint16_t bits = getNBits(imageData, bitOffset, code);
 
-    int decoded = decodeNumber(code, bits); 
+    int16_t decoded = decodeNumber(code, bits); 
     int16_t dcCoeff = decoded + oldCoeff;
 
     outBuffer[0] = dcCoeff;
