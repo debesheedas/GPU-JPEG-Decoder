@@ -27,6 +27,8 @@ std::vector<std::string> getImagesBySize(const std::string& datasetPath, int siz
 void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string>& imagePaths) {
     std::string imagePath = imagePaths[state.range(0)];
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
+    fs::path file_path(imagePath);
+    std::string filename = file_path.filename().string();
     
     for (auto _ : state) {
         
@@ -38,20 +40,35 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
 
         nvtxRangePush("Full");
 
-        JPEGParser parser(imagePath);
-        parser.extract();
+        uint16_t* hfCodes; 
+        int* hfLengths;
+        uint8_t* quantTables;
+        int16_t* yCrCbChannels;
+        int16_t* rgbChannels;
+        int16_t* outputChannels;
+        int* zigzagLocations;
+
+        uint8_t* imageData;
+        int width = 0;
+        int height = 0;
+        std::unordered_map<int,HuffmanTree*> huffmanTrees;
+
+        // Extracting the byte chunks
+        extract(imagePath, quantTables, imageData, width, height, huffmanTrees);
+        // Allocating memory for the arrays
+        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
 
         cudaEventRecord(start);
-
         
-        parser.decode();
+        decodeKernel<<<1, 1024>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
         
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
         
         nvtxRangePop();
 
-        parser.write();
+        write(outputChannels, width, height, filename);
+        clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees);
 
         float milliseconds = 0;
         cudaEventElapsedTime(&milliseconds, start, stop);
@@ -84,7 +101,7 @@ void RegisterBenchmarks(const std::string& datasetPath) {
 }
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_old";
     RegisterBenchmarks(datasetPath);
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();

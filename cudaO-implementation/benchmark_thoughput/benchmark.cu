@@ -48,26 +48,27 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
     // Define batch size (adjust based on available memory)
-    size_t batchSize = 400; // Example batch size
-    int threads = 64; 
+    size_t batchSize = 1000; // Example batch size
+    int threads = 32; 
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
     std::cout<< "num batches " << numBatches << " | numImages " << numImages << std::endl;
-
+    
     for (auto _ : state) {
         float totalKernelTime = 0.0f; // Total time across all batches
-        HostData hosts[batchSize];
+        
         DeviceData structs[batchSize];
-
         DeviceData* deviceStructs;
         cudaMalloc(&deviceStructs, batchSize * sizeof(DeviceData));
-        std::cout<<"Allocate Complete"<<std::endl;
-
+        // std::cout<<"Allocate Complete"<<std::endl;
+        
         for (size_t batchIdx = 0; batchIdx < numBatches; ++batchIdx) {
+            HostData hosts[batchSize];
             size_t startIdx = batchIdx * batchSize;
             size_t endIdx = std::min(startIdx + batchSize, numImages);
             size_t currentBatchSize = endIdx - startIdx;
 
             for (size_t i = 0; i < currentBatchSize; ++i) {
+                
                 size_t globalIdx = startIdx + i;
                 HostData* host_data = &hosts[i];
                 DeviceData* data = &structs[i];
@@ -90,12 +91,10 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
             if (err != cudaSuccess) {
                 printf("CUDA error: %s\n", cudaGetErrorString(err));
             }
-
             // Calculate time for this batch
             float milliseconds = 0;
             cudaEventElapsedTime(&milliseconds, batchStart, batchStop);
             totalKernelTime += milliseconds;
-
             // Temporarily write output
             // for (size_t i = 0; i < currentBatchSize; ++i) {
             //     // size_t globalIdx = startIdx + i;
@@ -108,15 +107,11 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
             for (size_t i = 0; i < currentBatchSize; ++i) {
                 HostData* host_data = &hosts[i];
                 DeviceData* data = &structs[i];
+                // std::cout << host_data->huffmanTrees[0]->codes[0] << std::endl;
                 clean(data->hfCodes, data->hfLengths, data->quantTables, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->zigzagLocations, data->imageData, host_data->huffmanTrees);
             }
         }
-        cudaFree(deviceStructs);
-        // delete[] structs;
-        // delete[] hosts;
-        // Convert total kernel time to seconds
         double seconds = totalKernelTime / 1000.0;
-
         // Calculate throughput
         double throughput = numImages / seconds; // Images per second
         double totalBytesProcessed = 0.0;
@@ -124,21 +119,22 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
             totalBytesProcessed += fs::file_size(path);  // Calculate total bytes processed
         }
         double bytesPerSecond = totalBytesProcessed / seconds; // bytes per second
-
         // Set iteration metrics
         state.SetIterationTime(seconds);
         state.counters["throughput_images_per_sec"] = throughput;
         state.counters["bytes_per_sec"] = bytesPerSecond;
+        if (deviceStructs) cudaFree(deviceStructs);
 
         // Log results
         resultFile << "Throughput: " << throughput << " images/sec, "
                    << "Bytes per second: " << bytesPerSecond / (1024 * 1024) << " MB/sec\n";
     }
+    
     resultFile.close();
 }
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_through";
 
     std::vector<std::string> imagePaths = getAllImages(datasetPath);
 
