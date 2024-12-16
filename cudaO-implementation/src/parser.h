@@ -28,9 +28,9 @@ struct DeviceData {
     uint16_t* hfCodes; 
     int* hfLengths;
     uint8_t* quantTables;
-    int* yCrCbChannels;
-    int* rgbChannels;
-    int* outputChannels;
+    int16_t* yCrCbChannels;
+    int16_t* rgbChannels;
+    int16_t* outputChannels;
     int* zigzagLocations;         
     int width;                  // Image width
     int height;                 // Image height

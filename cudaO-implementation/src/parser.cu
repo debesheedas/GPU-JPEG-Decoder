@@ -391,7 +391,7 @@ __global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t
 
 __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
 
-    __shared__ int zigzagMap[256];
+    __shared__ int zigzagMap[1024];
 
     // int threadId = blockIdx.x * blockDim.x + threadIdx.x;
     zigzagMap[threadId] = zigzagLocations[threadId];
@@ -451,23 +451,23 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
     performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
 }
 
-// __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
-//     // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
-//     int imageId = blockIdx.x;
-//     int threadId = threadIdx.x;
-//     int blockSize = blockDim.x;
-//     decodeImage(deviceStructs[imageId].imageData,
-//                 deviceStructs[imageId].yCrCbChannels,
-//                 deviceStructs[imageId].rgbChannels,
-//                 deviceStructs[imageId].outputChannels,
-//                 deviceStructs[imageId].width,
-//                 deviceStructs[imageId].height,
-//                 deviceStructs[imageId].quantTables,
-//                 deviceStructs[imageId].hfCodes,
-//                 deviceStructs[imageId].hfLengths,
-//                 deviceStructs[imageId].zigzagLocations,
-//                 threadId, blockSize);
-// }
+__global__ void batchDecodeKernel(DeviceData* deviceStructs) {
+    // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
+    int imageId = blockIdx.x;
+    int threadId = threadIdx.x;
+    int blockSize = blockDim.x;
+    decodeImage(deviceStructs[imageId].imageData,
+                deviceStructs[imageId].yCrCbChannels,
+                deviceStructs[imageId].rgbChannels,
+                deviceStructs[imageId].outputChannels,
+                deviceStructs[imageId].width,
+                deviceStructs[imageId].height,
+                deviceStructs[imageId].quantTables,
+                deviceStructs[imageId].hfCodes,
+                deviceStructs[imageId].hfLengths,
+                deviceStructs[imageId].zigzagLocations,
+                threadId, blockSize);
+}
 
 void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {
     // Freeing the memory

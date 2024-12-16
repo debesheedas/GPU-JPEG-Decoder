@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
     // Allocating memory for the arrays
     allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
     
-    decodeKernel<<<1, 256>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
+    decodeKernel<<<1, 1024>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
     cudaDeviceSynchronize();
     
     write(outputChannels, width, height, filename);
