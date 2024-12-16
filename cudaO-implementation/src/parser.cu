@@ -133,7 +133,14 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
    
 }
 
-void extract(std::vector<uint8_t>& bytes, uint8_t*& quantTables, uint8_t*& imageData, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {        
+void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
+
+    fs::path file_path(imagePath);
+    std::string filename = file_path.filename().string();
+    std::ifstream input(imagePath, std::ios::binary);
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
+    input.close();      
+
     uint16_t tableSize = 0;
     uint8_t header = 0;
     int imageDataLength = 0;
@@ -512,6 +519,21 @@ __global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbCha
 //                 threadId, blockSize);
 // }
 
+void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int*& yCrCbChannels, int*& rgbChannels, int*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {
+    // Freeing the memory
+    cudaFree(hfCodes);
+    cudaFree(hfLengths);
+    cudaFree(quantTables);
+    cudaFree(imageData);
+    cudaFree(zigzagLocations);
+    cudaFree(yCrCbChannels);
+    cudaFree(rgbChannels);
+    cudaFree(outputChannels);
+    for(const auto& [key, item]: huffmanTrees) {
+        delete item;
+    }
+}
+
 void write(int* outputChannels, int width, int height, std::string filename) {
     ImageChannels channels(height * width);
     size_t channelSize = width * height * sizeof(int);
@@ -545,10 +567,6 @@ int main(int argc, char* argv[]) {
     // Extract the file name of the image file from the file path
     fs::path file_path(imagePath);
     std::string filename = file_path.filename().string();
-    std::ifstream input(imagePath, std::ios::binary);
-    
-    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
-    input.close();
 
     uint16_t* hfCodes; 
     int* hfLengths;
@@ -564,24 +582,12 @@ int main(int argc, char* argv[]) {
     std::unordered_map<int,HuffmanTree*> huffmanTrees;
 
     // Extracting the byte chunks
-    extract(bytes, quantTables, imageData, width, height, huffmanTrees);
+    extract(imagePath, quantTables, imageData, width, height, huffmanTrees);
     // Allocating memory for the arrays
     allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
     decodeKernel<<<1, 256>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
     
     cudaDeviceSynchronize();
     write(outputChannels, width, height, filename);
-
-    // Freeing the memory
-    cudaFree(hfCodes);
-    cudaFree(hfLengths);
-    cudaFree(quantTables);
-    cudaFree(imageData);
-    cudaFree(zigzagLocations);
-    cudaFree(yCrCbChannels);
-    cudaFree(rgbChannels);
-    cudaFree(outputChannels);
-    for(const auto& [key, item]: huffmanTrees) {
-        delete item;
-    }
+    clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees);
 }
