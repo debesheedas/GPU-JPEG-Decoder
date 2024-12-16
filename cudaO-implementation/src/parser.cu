@@ -385,13 +385,16 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
 
     __shared__ int zigzagMap[1024];
 
-    // int threadId = blockIdx.x * blockDim.x + threadIdx.x;
-    zigzagMap[threadId] = zigzagLocations[threadId];
+    int pixelIndex = threadId;
+    while (pixelIndex < 64) {
+        zigzagMap[pixelIndex] = zigzagLocations[pixelIndex];
+        pixelIndex += blockSize;
+    }
+
 
     __syncthreads();
-
-    int pixelIndex = threadId;
     int totalPixels = width * height;
+    pixelIndex = threadId;
     if (threadId==0) {
         performHuffmanDecoding(imageData, yCrCbChannels, hfCodes, hfLengths, width, height);
     }
@@ -471,8 +474,10 @@ void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*&
     cudaFree(yCrCbChannels);
     cudaFree(rgbChannels);
     cudaFree(outputChannels);
-    for(const auto& [key, item]: huffmanTrees) {
-        delete item;
+    for(auto& [key, item]: huffmanTrees) {
+        if (item != NULL) {
+            delete item;
+        }
     }
 }
 
