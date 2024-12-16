@@ -1,382 +1,486 @@
 #include "parser.h"
 
-__constant__ int initialZigzag[64]; 
-
-__global__ void colorConversionKernel(int* luminous, int* chromRed, int* chromYel, int width, int height, int xBlocks, int yBlocks) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x; // x-coordinate
-    int y = blockIdx.y * blockDim.y + threadIdx.y; // y-coordinate
-    int i = y * width + x;
-
-    if (x < width && y < height) {
-        int blockIndex = (y / 8) * xBlocks + (x / 8); // Index of the current 8x8 block
-        int pixelIndexInBlock = threadIdx.y * 8 + threadIdx.x;  // Position within the block
-
-        float red = chromRed[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.299) + luminous[blockIndex * 64 + pixelIndexInBlock];
-        float blue = chromYel[blockIndex * 64 + pixelIndexInBlock] * (2 - 2 * 0.114) + luminous[blockIndex * 64 + pixelIndexInBlock];
-        float green = (luminous[blockIndex * 64 + pixelIndexInBlock] - 0.114 * blue - 0.299 * red) / 0.587;
-
-        int castedRed = static_cast<int>(red + 128);
-        int castedGreen = static_cast<int>(green + 128);
-        int castedBlue = static_cast<int>(blue + 128);
-
-        if (castedRed > 255) {
-            chromRed[i] = 255;
-        } else if (castedRed < 0) {
-            chromRed[i] = 0;
-        } else {
-            chromRed[i] = castedRed;
-        }
-
-        if (castedGreen > 255) {
-            chromYel[i] = 255;
-        } else if (castedGreen < 0) {
-            chromYel[i] = 0;
-        } else {
-            chromYel[i] = castedGreen;
-        }
-
-        if (castedBlue > 255) {
-            luminous[i] = 255;
-        } else if (castedBlue < 0) {
-            luminous[i] = 0;
-        } else {
-            luminous[i] = castedBlue;
-        }
-    }
+__device__ int16_t clip(int16_t value) {
+    if (value < -256) return -256;
+    if (value > 255) return 255;
+    return value;
 }
 
-__global__ void initializeIDCTTableKernel(double *dIdctTable, int numThreads)
-{
-    int id = blockIdx.x * blockDim.x + threadIdx.x;
+__device__ void idctRow(int16_t* block) {
+    int x0, x1, x2, x3, x4, x5, x6, x7;
+
+    // Shortcut: if all AC terms are zero, directly scale the DC term
+    if (!((x1 = block[4]<<11) | (x2 = block[6]) | (x3 = block[2]) | (x4 = block[1]) | (x5 = block[7]) | (x6 = block[5]) | (x7 = block[3]))) {
+        block[0] = block[1] = block[2] = block[3] = block[4] = block[5] = block[6] = block[7] = block[0]<<3;
+        return;
+    }
+    // Scale the DC coefficient
+    x0 = (block[0]<<11) + 128;
+
+    int x8 = C7 * (x4 + x5);
+    x4 = x8 + (C1 - C7) * x4;
+    x5 = x8 - (C1 + C7) * x5;
+    x8 = C3 * (x6 + x7);
+    x6 = x8 - (C3 - C5) * x6;
+    x7 = x8 - (C3 + C5) * x7;
+
+    x8 = x0 + x1;
+    x0 -= x1;
+    x1 = C6 * (x3 + x2);
+    x2 = x1 - (C2 + C6) * x2;
+    x3 = x1 + (C2 - C6) * x3;
+    x1 = x4 + x6;
+    x4 -= x6;
+    x6 = x5 + x7;
+    x5 -= x7;
+
+    x7 = x8 + x3;
+    x8 -= x3;
+    x3 = x0 + x2;
+    x0 -= x2;
+    x2 = (181 * (x4 + x5) + 128) >> 8;
+    x4 = (181 * (x4 - x5) + 128) >> 8;
+
+    block[0] = (x7 + x1) >> 8;
+    block[1] = (x3 + x2) >> 8;
+    block[2] = (x0 + x4) >> 8;
+    block[3] = (x8 + x6) >> 8;
+    block[4] = (x8 - x6) >> 8;
+    block[5] = (x0 - x4) >> 8;
+    block[6] = (x3 - x2) >> 8;
+    block[7] = (x7 - x1) >> 8;
+}
+
+__device__ void idctCol(int16_t* block) {
+    int x0, x1, x2, x3, x4, x5, x6, x7;
+
+    // Shortcut: if all AC terms are zero, directly scale the DC term
+    if (!((x1 = (block[8*4]<<8)) | (x2 = block[8*6]) | (x3 = block[8*2]) | (x4 = block[8*1]) | (x5 = block[8*7]) | (x6 = block[8*5]) | (x7 = block[8*3]))) {
+        block[8*0] = block[8*1] = block[8*2] = block[8*3] = block[8*4] = block[8*5] = block[8*6] = block[8*7] = clip((block[8*0]+32)>>6);
+        return;
+    }
+    // Scale the DC coefficient
+    x0 = (block[8*0]<<8) + 8192;
+
+    int x8 = C7 * (x4 + x5) + 4;
+    x4 = (x8 + (C1 - C7) * x4) >> 3;
+    x5 = (x8 - (C1 + C7) * x5) >> 3;
+    x8 = C3 * (x6 + x7) + 4;
+    x6 = (x8 - (C3 - C5) * x6) >> 3;
+    x7 = (x8 - (C3 + C5) * x7) >> 3;
     
-    if (id < numThreads) {
-        double normCoeff = ((id / 8) == 0) ? (1.0 / sqrt(2.0)) : 1.0;
-        dIdctTable[id] = normCoeff * cos(((2.0 * (id%8) + 1.0) * (id/8) * M_PI) / 16.0);
+    x8 = x0 + x1;
+    x0 -= x1;
+    x1 = C6 * (x3 + x2) + 4;
+    x2 = (x1 - (C2 + C6) * x2) >> 3;
+    x3 = (x1 + (C2 - C6) * x3) >> 3;
+    x1 = x4 + x6;
+    x4 -= x6;
+    x6 = x5 + x7;
+    x5 -= x7;
+
+    x7 = x8 + x3;
+    x8 -= x3;
+    x3 = x0 + x2;
+    x0 -= x2;
+    x2 = (181 * (x4 + x5) + 128) >> 8;
+    x4 = (181 * (x4 - x5) + 128) >> 8;
+
+    block[8 * 0] = clip((x7 + x1) >> 14);
+    block[8 * 1] = clip((x3 + x2) >> 14);
+    block[8 * 2] = clip((x0 + x4) >> 14);
+    block[8 * 3] = clip((x8 + x6) >> 14);
+    block[8 * 4] = clip((x8 - x6) >> 14);
+    block[8 * 5] = clip((x0 - x4) >> 14);
+    block[8 * 6] = clip((x3 - x2) >> 14);
+    block[8 * 7] = clip((x7 - x1) >> 14);
+}
+
+void checkCudaError(cudaError_t err, const char* msg) {
+    if (err != cudaSuccess) {
+        throw std::runtime_error(std::string(msg) + ": " + cudaGetErrorString(err));
     }
 }
 
-JPEGParser::JPEGParser(std::string& imagePath): quantTables(2) {
-    // Extract the file name of the image file from the file path
+/* Function to allocate the GPU space. */
+void allocate(int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height, int*& zigzagLocations) {
+
+    // const size_t codeSize = 256 * sizeof(uint16_t);
+    // const size_t lengthSize = 256 * sizeof(int);
+    const size_t imageSize = width * height * sizeof(int16_t);
+
+    // checkCudaError(cudaMalloc((void**)&hfCodes, codeSize * 4), "Failed to allocate device memory for huffman codes.");
+    // checkCudaError(cudaMalloc((void**)&hfLengths, lengthSize * 4), "Failed to allocate device memory for huffman lengths.");
+
+    checkCudaError(cudaMalloc((void**)&zigzagLocations, 256 * sizeof(int)), "Failed to allocate device memory for zigzag table.");
+    checkCudaError(cudaMemcpy(zigzagLocations, zigzagEntries, sizeof(int) * 64, cudaMemcpyHostToDevice), "Failed to copy entries for the zigzag table.");
+
+    // int index = 0;
+
+    // for (int i = 0; i < 4; ++i) {
+    //     if (i > 1 && index < 16)
+    //         index = 16;
+
+    //     checkCudaError(cudaMemcpy(hfCodes + i * 256, huffmanTrees[index]->codes, codeSize, cudaMemcpyHostToDevice), "Failed to copy data to device for huffman codes");
+    //     checkCudaError(cudaMemcpy(hfLengths + i * 256, huffmanTrees[index]->codeLengths, lengthSize, cudaMemcpyHostToDevice), "Failed to copy data to device for huffman lengths");
+    //     index++;
+    // }
+
+    // Allocating the channels in the GPU memory.
+    checkCudaError(cudaMalloc((void**)&yCrCbChannels, imageSize * 3), "Failed to allocate device memory for one yCrCb channel.");
+    checkCudaError(cudaMalloc((void**)&rgbChannels, imageSize * 3), "Failed to allocate device memory for one rgb channel.");
+    checkCudaError(cudaMalloc((void**)&outputChannels, imageSize * 3), "Failed to allocate device memory for one output channel.");
+}
+
+void extract(std::string imagePath, uint8_t*& quantTables, std::vector<uint8_t>& imageData, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
+
     fs::path file_path(imagePath);
-    this->filename = file_path.filename().string();
+    std::string filename = file_path.filename().string();
     std::ifstream input(imagePath, std::ios::binary);
-    
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), (std::istreambuf_iterator<char>()));
-    this->readBytes = bytes;
-    input.close();
+    input.close();      
 
-
-    int zigzagEntries[64] = {
-        0, 1, 5, 6, 14, 15, 27, 28,
-        2, 4, 7, 13, 16, 26, 29, 42,
-        3, 8, 12, 17, 25, 30, 41, 43,
-        9, 11, 18, 24, 31, 40, 44, 53,
-        10, 19, 23, 32, 39, 45, 52, 54,
-        20, 22, 33, 38, 46, 51, 55, 60,
-        21, 34, 37, 47, 50, 56, 59, 61,
-        35, 36, 48, 49, 57, 58, 62, 63
-    };
-
-    cudaMalloc((void**)&zigzag, 64 * sizeof(int));
-    cudaMemcpyToSymbol(initialZigzag, zigzagEntries, sizeof(int) * 64);
-
-    quantTables[0] = new uint8_t[64];
-    quantTables[1] = new uint8_t[64];
-
-    int blockSize = 64;
-    int gridSize = (64 + blockSize - 1) / blockSize;
-    cudaMalloc((void**)&idctTable, 64 * sizeof(double));
-    initializeIDCTTableKernel<<<blockSize, gridSize>>>(idctTable, 64);
-}
-
-void JPEGParser::extract() {        
     uint16_t tableSize = 0;
     uint8_t header = 0;
+    int imageDataLength = 0;
 
     // Using the Stream class for reading bytes.
-    Stream* stream = new Stream(this->readBytes);
-
+    Stream stream(bytes);
     while (true) {
-        uint16_t marker = stream->getMarker();
-
+        uint16_t marker = stream.getMarker();
         if (marker == MARKERS[0]) {
             continue;
         } else if (marker == MARKERS[1]) {
-            tableSize = stream->getMarker();
-            stream->getNBytes(this->applicationHeader, int(tableSize - 2));
+            tableSize = stream.getMarker();
+            std::vector<uint8_t> appHeader((int) tableSize - 2);
+            stream.getNBytes(appHeader, int(tableSize - 2));
         } else if (marker == MARKERS[2]) {
-            stream->getMarker();
-            uint8_t destination = stream->getByte();
-            stream->getNBytes(quantTables[0], 64);
-            if(stream->getMarker() == MARKERS[2]) {
-                stream->getMarker();
-                destination = stream->getByte();
-                stream->getNBytes(quantTables[1], 64);
+            stream.getMarker();
+            uint8_t destination = stream.getByte();
+            checkCudaError(cudaMalloc((void**)& quantTables, 128 * sizeof(uint8_t)), "Failed to allocate device memory for first quant table.");
+
+            std::vector<uint8_t> hostQuantTable(64);
+            stream.getNBytes(hostQuantTable, 64);
+
+            checkCudaError(cudaMemcpy(quantTables, hostQuantTable.data(), 64 * sizeof(uint8_t), cudaMemcpyHostToDevice),"Failed to copy data to device for first quant");
+
+            if(stream.getMarker() == MARKERS[2]) {
+                stream.getMarker();
+                destination = stream.getByte();
+                stream.getNBytes(hostQuantTable, 64);
+                checkCudaError(cudaMemcpy(quantTables + 64, hostQuantTable.data(), 64 * sizeof(uint8_t), cudaMemcpyHostToDevice),"Failed to copy data to device for second quant");
             } else {
                 std::cout << " Something went wrong at parsing second quant table." << std::endl;
             }
         } else if (marker == MARKERS[3]) {
-            tableSize = stream->getMarker();
-            stream->getNBytes(this->startOfFrame, (int) tableSize - 2);
-            Stream* frame = new Stream(this->startOfFrame);
-            int precision = frame->getByte();
-            this->height = frame->getMarker();
-            this->width = frame->getMarker();
-            delete frame;
+            tableSize = stream.getMarker();
+            std::vector<uint8_t> startOfFrame((int) tableSize - 2);
+            stream.getNBytes(startOfFrame, (int) tableSize - 2);
+            Stream frame(startOfFrame);
+            int precision = frame.getByte();
+            height = frame.getMarker();
+            width = frame.getMarker();
         } else if (marker == MARKERS[4]) {
-            tableSize = stream->getMarker();
-            header = stream->getByte();
-            stream->getNBytes(this->huffmanTables[0], (int) tableSize - 3);
-            this->huffmanTrees[header] = new HuffmanTree(this->huffmanTables[0]);
+            tableSize = stream.getMarker();
+            header = stream.getByte();
 
-            int huffmanCount = 1;
-            while(huffmanCount < 4) {
-                if (stream->getMarker() ==  MARKERS[4]) {
-                    tableSize = stream->getMarker();
-                    header = stream->getByte();
-                    stream->getNBytes(this->huffmanTables[huffmanCount], (int) tableSize - 3);
-                    this->huffmanTrees[header] = new HuffmanTree(this->huffmanTables[huffmanCount]);
-                    huffmanCount++; 
-                }
+            std::vector<uint8_t> huffmanTable((int) tableSize - 3);
+
+            stream.getNBytes(huffmanTable, (int) tableSize - 3);
+            huffmanTrees[(int)header] = new HuffmanTree(huffmanTable);
+
+            if (stream.getMarker() ==  MARKERS[4]) {
+                tableSize = stream.getMarker();
+                header = stream.getByte();
+                huffmanTable.resize((int) tableSize - 3);
+                stream.getNBytes(huffmanTable, (int) tableSize - 3);
+                huffmanTrees[(int)header] = new HuffmanTree(huffmanTable);
             }
-        } else if (marker == MARKERS[5]) {
-            tableSize = stream->getMarker();
-            stream->getNBytes(this->startOfScan, (int) tableSize - 2);
-            uint8_t curByte, prevByte = 0x00;
 
+            if (stream.getMarker() ==  MARKERS[4]) {
+                tableSize = stream.getMarker();
+                header = stream.getByte();
+                huffmanTable.resize((int) tableSize - 3);
+                stream.getNBytes(huffmanTable, (int) tableSize - 3);
+                huffmanTrees.emplace((int)header, new HuffmanTree(huffmanTable));
+            }
+
+            if (stream.getMarker() ==  MARKERS[4]) {
+                tableSize = stream.getMarker();
+                header = stream.getByte();
+                huffmanTable.resize((int) tableSize - 3);
+                stream.getNBytes(huffmanTable, (int) tableSize - 3);
+                huffmanTrees.emplace((int)header, new HuffmanTree(huffmanTable));
+            }
+
+        } else if (marker == MARKERS[5]) {
+            tableSize = stream.getMarker();
+
+            std::vector<uint8_t> startOfScan((int) tableSize - 2);
+            stream.getNBytes(startOfScan, (int) tableSize - 2);
+            uint8_t curByte, prevByte = 0x00;
+            // size_t size = 5 * 1024 * 1024;
+            
             while (true) {
-                curByte = stream->getByte();
+                curByte = stream.getByte();
                 if ((prevByte == 0xff) && (curByte == 0xd9))
                     break;
                 if (curByte == 0x00) {
                     if (prevByte != 0xff) {
-                        this->imageData.push_back(curByte);
+                        imageData.push_back(curByte);
+                        imageDataLength++;
                     }
                 } else {
-                    this->imageData.push_back(curByte);
+                    imageData.push_back(curByte);
+                    imageDataLength++;
                 }
                 prevByte = curByte;
             }
             
-            imageData.pop_back(); // We remove the ending byte because it is extra 0xff.
+            imageDataLength--; // We remove the ending byte because it is extra 0xff.
             break;
         }
     } 
-    delete stream;   
+
 }
 
-void JPEGParser::buildMCU(int* hostBuffer, Stream* imageStream, int hf, int quant, int& oldCoeff) {
-    uint8_t code = this->huffmanTrees[hf]->getCode(imageStream);
-    //printf("dc code %d:\n", code);
+void buildMCU(int16_t* hostBuffer, Stream* imageStream, int& oldCoeff, int hf, std::unordered_map<int,HuffmanTree*> huffmanTrees) {
+    // if (huffmanTrees[hf]) std::cout << "not null" << std::endl;
+    uint8_t code = huffmanTrees[hf]->getCode(imageStream);
+    // printf("dc code %d:\n", code);
     uint16_t bits = imageStream->getNBits(code);
     int decoded = Stream::decodeNumber(code, bits);
     int dcCoeff = decoded + oldCoeff;
-    //printf("dc coeff %d:\n", dcCoeff);
-
-    hostBuffer[0] = dcCoeff * (int) this->quantTables[quant][0];
+    // printf("dc coeff %d:\n", dcCoeff);
+    hostBuffer[0] = dcCoeff;
     int length = 1;
-
     while (length < 64) {
-        code = this->huffmanTrees[16 + hf]->getCode(imageStream);
-        //printf("code %d:\n", code);
+        code = huffmanTrees[16 + hf]->getCode(imageStream);
+        // printf("code %d:\n", code);
         if (code == 0) {
             break;
         }
-
         // The first part of the AC key length is the number of leading zeros
         if (code > 15) {
             length += (code >> 4);
             code = code & 0x0f;
         }
-
         bits = imageStream->getNBits(code);
         if (length < 64) {
             decoded = Stream::decodeNumber(code, bits);
-            //printf("ac coeff %d:\n", decoded);
-            int val = decoded * (int) this->quantTables[quant][length];
+            // printf("ac coeff %d:\n", decoded);
+            int val = decoded;
             hostBuffer[length] = val;
             length++;
         }
     }
-
     // Update oldCoeff for the next MCU
     oldCoeff = dcCoeff;
 }
 
-JPEGParser::~JPEGParser() {
-    // if (this->channels) {
-    //     delete this->channels;
-    // }
+void performHuffmanDecoding(std::vector<uint8_t> imageData, int16_t* yCrCbChannels, std::unordered_map<int,HuffmanTree*> huffmanTrees, int width, int height) {
+    std::vector<int16_t> host_yCrCbChannels(3*width*height, 0);
+    Stream* imageStream = new Stream(imageData);
 
-    cudaFree(idctTable);
+    int16_t* curLuminous = host_yCrCbChannels.data();
+    int16_t* curChromRed = host_yCrCbChannels.data() + width * height;
+    int16_t* curChromYel = host_yCrCbChannels.data() + 2 * width * height;
 
-    delete[] quantTables[0];
-    delete[] quantTables[1];
-
-    delete channels;
-
-    for (auto& tree : huffmanTrees) {
-        delete tree.second;
-    }
-}
-
-__global__ void performIDCTKernel(int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, int validWidth) {
-    // Shared memory for zigzag arrays
-    __shared__ int sharedZigzag[3 * 64];
-    int* zigzag_l = &sharedZigzag[0];
-    int* zigzag_r = &sharedZigzag[64];
-    int* zigzag_y = &sharedZigzag[128];
-    
-    int blockStart = blockIdx.x * 64;
-
-    // Identify the thread's position in the 8x8 grid
-    int threadRow = threadIdx.y; // Row index (0-7)
-    int threadCol = threadIdx.x; // Column index (0-7)
-    int threadIndexInBlock = threadRow * 8 + threadCol; // Flattened index
-
-    // Calculate the global index for this thread
-    int globalIndex = blockStart + threadIndexInBlock;
-
-    if (threadCol < validWidth && threadRow < validHeight) {
-        zigzag_l[threadIndexInBlock] = arr_l[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_r[threadIndexInBlock] = arr_r[blockStart + initialZigzag[threadIndexInBlock]];
-        zigzag_y[threadIndexInBlock] = arr_y[blockStart + initialZigzag[threadIndexInBlock]];
-    } else {
-        zigzag_l[threadIndexInBlock] = 0;
-        zigzag_r[threadIndexInBlock] = 0;
-        zigzag_y[threadIndexInBlock] = 0;
-    }
-
-    __syncthreads();
-
-    if (threadCol < validWidth && threadRow < validHeight) {
-        double localSum_l = 0.0;
-        double localSum_r = 0.0;
-        double localSum_y = 0.0;
-        for (int u = 0; u < 8; u++) {
-            for (int v = 0; v < 8; v++) {
-                localSum_l += zigzag_l[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_r += zigzag_r[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-                localSum_y += zigzag_y[v * 8 + u] * idctTable[u * 8 + threadCol] * idctTable[v * 8 + threadRow];
-            }
-        }
-
-        arr_l[globalIndex] = static_cast<int>(std::floor(localSum_l / 4.0));
-        arr_y[globalIndex] = static_cast<int>(std::floor(localSum_y / 4.0));
-        arr_r[globalIndex] = static_cast<int>(std::floor(localSum_r / 4.0));
-    }
-}
-
-
-void JPEGParser::decode() {
-    int oldLumCoeff = 0;
-    int oldCbdCoeff = 0;
-    int oldCrdCoeff = 0;
-
-    // Pad the image dimension if it is not divisible by 8
-    int paddedWidth = ((this->width + 7) / 8) * 8;
-    int paddedHeight = ((this->height + 7) / 8) * 8;
-
-    int xBlocks = paddedWidth / 8;
-    int yBlocks = paddedHeight / 8;
-
-    Stream* imageStream = new Stream(this->imageData);
-
-    // Allocating the channels in the GPU memory.
-    int *luminous, *chromRed, *chromYel;
-    cudaMalloc((void**)&luminous, 64 * xBlocks * yBlocks * sizeof(int));
-    cudaMalloc((void**)&chromRed, 64 * xBlocks * yBlocks * sizeof(int));
-    cudaMalloc((void**)&chromYel, 64 * xBlocks * yBlocks * sizeof(int));
-
-    int* hostBuffer_l = new int[64 * xBlocks * yBlocks * sizeof(int)];
-    int* hostBuffer_y = new int[64 * xBlocks * yBlocks * sizeof(int)];
-    int* hostBuffer_r = new int[64 * xBlocks * yBlocks * sizeof(int)];
-
-    int *curLuminous = hostBuffer_l;
-    int *curChromRed = hostBuffer_r;
-    int *curChromYel = hostBuffer_y;
+    int oldLumCoeff = 0, oldCbdCoeff = 0, oldCrdCoeff = 0;
+    int xBlocks = width / 8;
+    int yBlocks = height / 8;
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            // Determine the valid width and height for this block to account for padding
-            // int blockWidth = (x == xBlocks - 1 && paddedWidth != this->width) ? this->width % 8 : 8;
-            // int blockHeight = (y == yBlocks - 1 && paddedHeight != this->height) ? this->height % 8 : 8;
-            // printf("oldLumcoefficient %d:\n", oldLumCoeff);
-            this->buildMCU(curLuminous, imageStream, 0, 0, oldLumCoeff);
-            // printf("oldCbdcoefficient %d:\n", oldCbdCoeff);
-            this->buildMCU(curChromRed, imageStream, 1, 1, oldCbdCoeff);
-            // printf("oldCrdcoefficient %d:\n", oldCrdCoeff);
-            this->buildMCU(curChromYel, imageStream, 1, 1, oldCrdCoeff);
+            buildMCU(curLuminous, imageStream, oldLumCoeff, 0, huffmanTrees);
+            buildMCU(curChromRed, imageStream, oldCbdCoeff, 1, huffmanTrees);
+            buildMCU(curChromYel, imageStream, oldCrdCoeff, 1, huffmanTrees);
             curLuminous += 64;
             curChromRed += 64;
             curChromYel += 64;
         }
     }
-
-    cudaMemcpy(luminous, hostBuffer_l, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(chromRed, hostBuffer_r, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(chromYel, hostBuffer_y, 64 * xBlocks * yBlocks * sizeof(int), cudaMemcpyHostToDevice);
-
-    // int bytes = 64 * xBlocks * yBlocks * sizeof(int);
-    // int *h_array = (int *)malloc(bytes);
-
-    // cudaMemcpy(h_array, luminous, bytes, cudaMemcpyDeviceToHost);
-    // std::cout << "Array contents copied from GPU to CPU:" << std::endl;
-    // for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
-    //     std::cout << h_array[i] << " ";
+    // for(int i = 0; i < 10; i++) {
+    //     // printf("Hi\n");
+    //     printf("%d %d %d\n",  host_yCrCbChannels[i],  host_yCrCbChannels[width * height + i], host_yCrCbChannels[2*width * height + i]);
+    //     // printf("%d\n",  yCrCbChannels[i]);
+    //     // printf("%d %d %d\n",  arr_l[i], arr_r[i], arr_y[i]);
     // }
-    // std::cout << std::endl;
-    // cudaMemcpy(h_array, chromRed, bytes, cudaMemcpyDeviceToHost);
-    // std::cout << "Array contents copied from GPU to CPU:" << std::endl;
-    // for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
-    //     std::cout << h_array[i] << " ";
-    // }
-    // std::cout << std::endl;
-    // cudaMemcpy(h_array, chromYel, bytes, cudaMemcpyDeviceToHost);
-    // std::cout << "Array contents copied from GPU to CPU:" << std::endl;
-    // for (int i = 0; i < (64 * xBlocks * yBlocks); i++) {
-    //     std::cout << h_array[i] << " ";
-    // }
-    // std::cout << std::endl;
-
-    int numBlocks = xBlocks * yBlocks; // Number of CUDA blocks
-    dim3 threadsPerBlock(8, 8);
-
-    performIDCTKernel<<<numBlocks, threadsPerBlock>>>(luminous, chromRed, chromYel, idctTable, 8, 8);
-
-    this->channels = new ImageChannels(this->height * this->width);
-
-    // Convert YCbCr channels to RGB
-    dim3 blockSize(8, 8);
-    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
-    size_t channelSize = width * height * sizeof(int);
-    colorConversionKernel<<<gridSize, blockSize>>>(luminous, chromYel, chromRed, width, height, xBlocks, yBlocks);
-
-    cudaMemcpy(channels->getR().data(), chromYel, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getG().data(), chromRed, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels->getB().data(), luminous, channelSize, cudaMemcpyDeviceToHost);
-
-    if (luminous) cudaFree(luminous);
-    if (chromRed) cudaFree(chromRed);
-    if (chromYel) cudaFree(chromYel);
-
-    delete imageStream;
-    delete hostBuffer_l;
-    delete hostBuffer_r;
-    delete hostBuffer_y;
+    checkCudaError(cudaMemcpy(yCrCbChannels, host_yCrCbChannels.data(), sizeof(int16_t) * host_yCrCbChannels.size(), cudaMemcpyHostToDevice), "Failed to copy entries for the zigzag table.");
 }
 
-void JPEGParser::write() {
+__device__ void performZigzagReordering(int16_t* yCrCbChannels, int16_t* rgbChannels, uint8_t* quantTables,
+                                        int blockIndex, int threadIndexInBlock, int threadId, int pixelIndex, int totalPixels, int* zigzagLocations) {
+    rgbChannels[pixelIndex] = yCrCbChannels[blockIndex * 64 + zigzagLocations
+[threadIndexInBlock]] * quantTables[zigzagLocations
+[threadIndexInBlock]];
+    rgbChannels[totalPixels + pixelIndex] = yCrCbChannels[totalPixels+blockIndex * 64 + zigzagLocations
+[threadIndexInBlock]] * quantTables[64+zigzagLocations
+[threadIndexInBlock]];
+    rgbChannels[2*totalPixels + pixelIndex] = yCrCbChannels[2*totalPixels+blockIndex * 64 + zigzagLocations
+[threadIndexInBlock]] * quantTables[64+zigzagLocations
+[threadIndexInBlock]];
+}
+
+__device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChannels,
+                                       int totalPixels, int width, int threadId, int blockDimGridDim) {
+    for (int i = threadId; i < totalPixels; i += blockDimGridDim) {
+        int blockId = i / 64;
+        int blockRow = blockId / (width / 8);
+        int blockColumn = blockId % (width / 8);
+
+        int rowStart = blockRow * 8;
+        int columnStart = blockColumn * 8;
+
+        int pixelIndexInBlock = i % 64;
+        int rowInBlock = pixelIndexInBlock / 8;
+        int columnInBlock = pixelIndexInBlock % 8;
+
+        int globalRow = rowStart + rowInBlock;
+        int globalColumn = columnStart + columnInBlock;
+
+        int actualIndex = globalRow * width + globalColumn;
+
+        // Retrieve pixel data and perform the color conversion
+        float red = rgbChannels[2*totalPixels+i] * (2 - 2 * 0.299) + rgbChannels[i];
+        float blue = rgbChannels[totalPixels + i] * (2 - 2 * 0.114) + rgbChannels[i];
+        float green = (rgbChannels[i] - 0.114 * blue - 0.299 * red) / 0.587;
+
+        // Clamp values to [0, 255]
+        outputChannels[actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
+        outputChannels[totalPixels+ actualIndex] = min(max(static_cast<int16_t>(green + 128), 0), 255);
+        outputChannels[2*totalPixels+actualIndex] = min(max(static_cast<int16_t>(blue + 128), 0), 255);
+        // if (actualIndex == 355) {
+        //     printf("the values %f, %f, %f, %d, %d, %d, \n", red, blue, green, outputChannels[actualIndex], outputChannels[totalPixels+ actualIndex], outputChannels[2*totalPixels+actualIndex]);
+        // }
+    }
+}
+
+__global__ void decodeKernel(int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, int* zigzagLocations) {
+    // int imageId = blockIdx.x;
+    int threadId = threadIdx.x;
+    int blockSize = blockDim.x;
+    decodeImage(yCrCbChannels,
+                rgbChannels,
+                outputChannels,
+                width,
+                height,
+                quantTables,
+                zigzagLocations,
+                threadId, blockSize);
+}
+
+__device__ void decodeImage(int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, int* zigzagLocations, int threadId, int blockSize) {
+    
+    int totalPixels = width * height;
+    __shared__ int zigzagMap[1024];
+
+    int pixelIndex = threadId;
+    while (pixelIndex < 64) {
+        zigzagMap[pixelIndex] = zigzagLocations[pixelIndex];
+        pixelIndex += blockSize;
+    }
+    __syncthreads();
+
+    // pixelIndex = threadId;
+    // if (threadId==0) {
+    //     performHuffmanDecoding(imageData, yCrCbChannels, hfCodes, hfLengths, width, height);
+    // }
+    // __syncthreads();
+
+    while (pixelIndex < totalPixels) {
+        int threadIndexInBlock = pixelIndex % 64;
+        int blockIndex = pixelIndex / 64;
+
+        performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
+                                blockIndex, threadIndexInBlock, threadId, pixelIndex, totalPixels, zigzagMap);
+
+        // pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
+    }
+
+    __syncthreads();
+
+    pixelIndex = threadId;
+
+    while (pixelIndex * 8 < totalPixels) {        
+        idctRow(rgbChannels + pixelIndex * 8);
+        idctRow(rgbChannels + totalPixels + pixelIndex * 8);
+        idctRow(rgbChannels + 2*totalPixels + pixelIndex * 8);
+
+        // pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
+    }
+
+    __syncthreads();
+
+    pixelIndex = threadId;
+
+     while (pixelIndex * 8 < totalPixels) {
+        int start = pixelIndex / 8;
+        start = start * 64;
+        start = start + (pixelIndex % 8);
+        
+        idctCol(rgbChannels + start);
+        idctCol(rgbChannels + totalPixels + start);
+        idctCol(rgbChannels + 2*totalPixels + start);
+
+        // pixelIndex += blockDim.x * gridDim.x;
+        pixelIndex += blockSize;
+    }
+    __syncthreads();
+
+    // Iterate over pixels handled by this thread
+    performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
+}
+
+__global__ void batchDecodeKernel(DeviceData* deviceStructs) {
+    // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
+    int imageId = blockIdx.x;
+    int threadId = threadIdx.x;
+    int blockSize = blockDim.x;
+    decodeImage(deviceStructs[imageId].yCrCbChannels,
+                deviceStructs[imageId].rgbChannels,
+                deviceStructs[imageId].outputChannels,
+                deviceStructs[imageId].width,
+                deviceStructs[imageId].height,
+                deviceStructs[imageId].quantTables,
+                deviceStructs[imageId].zigzagLocations,
+                threadId, blockSize);
+}
+
+void clean(uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {
+    // Freeing the memory
+    cudaFree(quantTables);
+    cudaFree(zigzagLocations);
+    cudaFree(yCrCbChannels);
+    cudaFree(rgbChannels);
+    cudaFree(outputChannels);
+    for(auto& [key, item]: huffmanTrees) {
+        if (item != NULL) {
+            delete item;
+        }
+    }
+}
+
+void write(int16_t* outputChannels, int width, int height, std::string filename) {
+    ImageChannels channels(height * width);
+    size_t channelSize = width * height * sizeof(int16_t);
+    cudaMemcpy(channels.getR().data(), outputChannels, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels.getG().data(), outputChannels+width*height, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels.getB().data(), outputChannels+2*width*height, channelSize, cudaMemcpyDeviceToHost);
+
     // Writing the decoded channels to a file instead of displaying using opencv
-    fs::path output_dir = "../testing/cudaH_output_arrays"; // Change the directory name here for future CUDA implementations
-    fs::path full_path = output_dir / this->filename;
+    fs::path output_dir = "../testing/cudaH_output_arrays";
+    // fs::path output_dir = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/bench"; // Change the directory name here for future CUDA implementations
+    fs::path full_path = output_dir / filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);
-    outfile << this->height << " " << this->width << std::endl;
-    std::copy(this->channels->getR().begin(), this->channels->getR().end(), std::ostream_iterator<int>(outfile, " "));
+    outfile << height << " " << width << std::endl;
+    std::copy(channels.getR().begin(), channels.getR().end(), std::ostream_iterator<int>(outfile, " "));
     outfile << std::endl;
-    std::copy(this->channels->getG().begin(), this->channels->getG().end(), std::ostream_iterator<int>(outfile, " "));
+    std::copy(channels.getG().begin(), channels.getG().end(), std::ostream_iterator<int>(outfile, " "));
     outfile << std::endl;
-    std::copy(this->channels->getB().begin(), this->channels->getB().end(), std::ostream_iterator<int>(outfile, " "));
+    std::copy(channels.getB().begin(), channels.getB().end(), std::ostream_iterator<int>(outfile, " "));
     outfile.close();
 }

@@ -27,31 +27,41 @@ std::vector<std::string> getImagesBySize(const std::string& datasetPath, int siz
 void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string>& imagePaths) {
     std::string imagePath = imagePaths[state.range(0)];
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
+    fs::path file_path(imagePath);
+    std::string filename = file_path.filename().string();
     
     for (auto _ : state) {
-        
         // Start CUDA timer for GPU-based operations
         cudaEvent_t start, stop;
-
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
-
         nvtxRangePush("Full");
 
-        JPEGParser parser(imagePath);
+        uint8_t* quantTables;
+        int16_t* yCrCbChannels;
+        int16_t* rgbChannels;
+        int16_t* outputChannels;
+        int* zigzagLocations;
+        std::vector<uint8_t> imageData;
+        int width = 0;
+        int height = 0;
+        std::unordered_map<int,HuffmanTree*> huffmanTrees;
+
+        // Extracting the byte chunks
+        extract(imagePath, quantTables, imageData, width, height, huffmanTrees);
+        // Allocating memory for the arrays
+        allocate(yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
 
         cudaEventRecord(start);
-
-        parser.extract();
-        parser.decode();
-        
+        performHuffmanDecoding(imageData, yCrCbChannels, huffmanTrees, width, height);
+        decodeKernel<<<1, 1024>>>(yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, zigzagLocations);
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
         
         nvtxRangePop();
 
-        parser.write();
-
+        // write(outputChannels, width, height, filename);
+        clean(quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, huffmanTrees);
         float milliseconds = 0;
         cudaEventElapsedTime(&milliseconds, start, stop);
 

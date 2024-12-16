@@ -19,10 +19,9 @@ class Stream {
         uint8_t getByte();
         uint16_t getMarker();
         void getNBytes(std::vector<uint8_t>& arr, int n);
-        void getNBytes(uint8_t* arr, int n);
 
         // Converts the value in byte stream to correct 2's complement.
-        static int decodeNumber(uint8_t code, int bits);
+        static int16_t decodeNumber(uint8_t code, int bits);
 };
 
 #endif
