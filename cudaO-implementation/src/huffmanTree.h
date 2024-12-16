@@ -44,7 +44,7 @@ class HuffmanTree {
     
     public:
         HuffmanTree(std::vector<uint8_t>& bytes);
-        // ~HuffmanTree();
+        ~HuffmanTree();
         std::unordered_map<uint8_t, std::string> getCodes();
         uint8_t traverseTree(HuffmanTreeNode* cur, Stream* st);
         uint8_t getCode(Stream* st);
