@@ -173,7 +173,6 @@ void extract(std::vector<uint8_t>& bytes, uint8_t*& quantTables, uint8_t*& image
             int precision = frame.getByte();
             height = frame.getMarker();
             width = frame.getMarker();
-            std::cout << height << " " << width  << " " << precision << std::endl;
         } else if (marker == MARKERS[4]) {
             tableSize = stream.getMarker();
             header = stream.getByte();
@@ -354,9 +353,6 @@ __device__ void performColorConversion(int* rgbChannels, int* outputChannels,
         outputChannels[actualIndex] = min(max(static_cast<int>(red + 128), 0), 255);
         outputChannels[totalPixels+ actualIndex] = min(max(static_cast<int>(green + 128), 0), 255);
         outputChannels[2*totalPixels+actualIndex] = min(max(static_cast<int>(blue + 128), 0), 255);
-        if (actualIndex == 355) {
-            printf("%f %f %f %d %d %d \n", red, blue, green,rgbChannels[i], rgbChannels[totalPixels + i], rgbChannels[2*totalPixels+i]);
-        }
     }
 }
 
@@ -382,10 +378,6 @@ __global__ void decodeKernel(uint8_t* imageData, int* yCrCbChannels, int* rgbCha
     }
 
     __syncthreads();
-
-    if (threadId == 0) {
-        printf("%d rgb val \n", rgbChannels[0]);
-    }
 
     pixelIndex = threadId;
 
@@ -585,7 +577,6 @@ int main(int argc, char* argv[]) {
     decodeKernel<<<1, 256>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths);
     
     cudaDeviceSynchronize();
-    std::cout << cudaGetLastError() << std::endl;
     write(outputChannels, width, height, filename);
 
     // Freeing the memory
