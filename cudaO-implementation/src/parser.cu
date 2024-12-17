@@ -1,22 +1,24 @@
 #include "parser.h"
 
 __device__ int16_t clip(int16_t value) {
-    if (value < -256) return -256;
-    if (value > 255) return 255;
+    value = max(-256, value);
+    value = min(255, value);
     return value;
 }
-
 __device__ void idctRow(int16_t* block) {
     int x0, x1, x2, x3, x4, x5, x6, x7;
 
-    // Shortcut: if all AC terms are zero, directly scale the DC term
-    if (!((x1 = block[4]<<11) | (x2 = block[6]) | (x3 = block[2]) | (x4 = block[1]) | (x5 = block[7]) | (x6 = block[5]) | (x7 = block[3]))) {
-        block[0] = block[1] = block[2] = block[3] = block[4] = block[5] = block[6] = block[7] = block[0]<<3;
-        return;
-    }
-    // Scale the DC coefficient
-    x0 = (block[0]<<11) + 128;
+    // Extract and scale coefficients
+    x0 = (block[0] << 11) + 128; // Scale DC coefficient
+    x1 = block[4] << 11;
+    x2 = block[6];
+    x3 = block[2];
+    x4 = block[1];
+    x5 = block[7];
+    x6 = block[5];
+    x7 = block[3];
 
+    // Perform IDCT calculations
     int x8 = C7 * (x4 + x5);
     x4 = x8 + (C1 - C7) * x4;
     x5 = x8 - (C1 + C7) * x5;
@@ -41,6 +43,7 @@ __device__ void idctRow(int16_t* block) {
     x2 = (181 * (x4 + x5) + 128) >> 8;
     x4 = (181 * (x4 - x5) + 128) >> 8;
 
+    // Store results
     block[0] = (x7 + x1) >> 8;
     block[1] = (x3 + x2) >> 8;
     block[2] = (x0 + x4) >> 8;
@@ -54,21 +57,24 @@ __device__ void idctRow(int16_t* block) {
 __device__ void idctCol(int16_t* block) {
     int x0, x1, x2, x3, x4, x5, x6, x7;
 
-    // Shortcut: if all AC terms are zero, directly scale the DC term
-    if (!((x1 = (block[8*4]<<8)) | (x2 = block[8*6]) | (x3 = block[8*2]) | (x4 = block[8*1]) | (x5 = block[8*7]) | (x6 = block[8*5]) | (x7 = block[8*3]))) {
-        block[8*0] = block[8*1] = block[8*2] = block[8*3] = block[8*4] = block[8*5] = block[8*6] = block[8*7] = clip((block[8*0]+32)>>6);
-        return;
-    }
-    // Scale the DC coefficient
-    x0 = (block[8*0]<<8) + 8192;
+    // Extract and scale coefficients
+    x0 = (block[8 * 0] << 8) + 8192; // Scale DC coefficient
+    x1 = block[8 * 4] << 8;
+    x2 = block[8 * 6];
+    x3 = block[8 * 2];
+    x4 = block[8 * 1];
+    x5 = block[8 * 7];
+    x6 = block[8 * 5];
+    x7 = block[8 * 3];
 
+    // Perform IDCT calculations
     int x8 = C7 * (x4 + x5) + 4;
     x4 = (x8 + (C1 - C7) * x4) >> 3;
     x5 = (x8 - (C1 + C7) * x5) >> 3;
     x8 = C3 * (x6 + x7) + 4;
     x6 = (x8 - (C3 - C5) * x6) >> 3;
     x7 = (x8 - (C3 + C5) * x7) >> 3;
-    
+
     x8 = x0 + x1;
     x0 -= x1;
     x1 = C6 * (x3 + x2) + 4;
@@ -86,6 +92,7 @@ __device__ void idctCol(int16_t* block) {
     x2 = (181 * (x4 + x5) + 128) >> 8;
     x4 = (181 * (x4 - x5) + 128) >> 8;
 
+    // Store results with clipping
     block[8 * 0] = clip((x7 + x1) >> 14);
     block[8 * 1] = clip((x3 + x2) >> 14);
     block[8 * 2] = clip((x0 + x4) >> 14);
@@ -95,6 +102,7 @@ __device__ void idctCol(int16_t* block) {
     block[8 * 6] = clip((x3 - x2) >> 14);
     block[8 * 7] = clip((x7 - x1) >> 14);
 }
+
 
 void checkCudaError(cudaError_t err, const char* msg) {
     if (err != cudaSuccess) {
@@ -266,17 +274,19 @@ __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
     int code = 0;
     int code_length = 0;
     match_huffman_code(imageData, bitOffset, dcHfcodes, dcHflengths, code, code_length);
+    // printf("dc code %d:\n", code);
     bitOffset += code_length;
     uint16_t bits = getNBits(imageData, bitOffset, code);
 
     int16_t decoded = decodeNumber(code, bits); 
     int16_t dcCoeff = decoded + oldCoeff;
-
+    // printf("dc coeff %d:\n", dcCoeff);
     outBuffer[0] = dcCoeff;
 
     int length = 1;
     while (length < 64) {
         match_huffman_code(imageData, bitOffset, acHfcodes, acHflengths, code, code_length);
+        // printf("code %d:\n", code);
         bitOffset += code_length;
         if (code == 0) {
             break;
@@ -289,6 +299,7 @@ __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
         bits = getNBits(imageData, bitOffset, code);
         if (length < 64) {
             decoded = decodeNumber(code, bits);
+            // printf("ac coeff %d:\n", decoded);
             outBuffer[length] = decoded;
             length++;
         }
@@ -365,7 +376,7 @@ __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChan
 }
 
 __global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations) {
-    int imageId = blockIdx.x;
+    // int imageId = blockIdx.x;
     int threadId = threadIdx.x;
     int blockSize = blockDim.x;
     decodeImage(imageData,
@@ -410,28 +421,23 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
         // pixelIndex += blockDim.x * gridDim.x;
         pixelIndex += blockSize;
     }
-
     __syncthreads();
 
     pixelIndex = threadId;
-
     while (pixelIndex * 8 < totalPixels) {        
-        idctRow(rgbChannels + pixelIndex * 8);
-        idctRow(rgbChannels + totalPixels + pixelIndex * 8);
-        idctRow(rgbChannels + 2*totalPixels + pixelIndex * 8);
+        int start = (pixelIndex / 8) * 64 + (pixelIndex % 8) * 8;
+
+        idctRow(rgbChannels + start);
+        idctRow(rgbChannels + totalPixels + start);
+        idctRow(rgbChannels + 2*totalPixels + start);
 
         // pixelIndex += blockDim.x * gridDim.x;
         pixelIndex += blockSize;
     }
 
-    __syncthreads();
-
     pixelIndex = threadId;
-
      while (pixelIndex * 8 < totalPixels) {
-        int start = pixelIndex / 8;
-        start = start * 64;
-        start = start + (pixelIndex % 8);
+        int start = (pixelIndex / 8) * 64 + (pixelIndex % 8);
         
         idctCol(rgbChannels + start);
         idctCol(rgbChannels + totalPixels + start);
