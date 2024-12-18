@@ -39,6 +39,12 @@ struct ImageChannels {
     std::vector<int>& getB() { return channels[5]; }
 };
 
+ __global__ void decodeKernel(uint8_t* imageData, int* arr_l, int* arr_r, int* arr_y, double* idctTable, int validHeight, 
+                                int validWidth, int width, int height, int xBlocks, int yBlocks, int* redOutput, 
+                                int* greenOutput, int* blueOutput, uint8_t* quant1, uint8_t* quant2, 
+                                uint16_t* hf0codes, uint16_t* hf1codes, uint16_t* hf16codes, uint16_t* hf17codes,
+                                int* hf0lengths, int* hf1lengths, int* hf16lengths, int* hf17lengths, int* scratchpad, int guesses, int* predictions);
+
 class JPEGParser {
     private:
         // Parts of the jpeg file.
@@ -86,7 +92,6 @@ class JPEGParser {
         // Methods for extracting and building blocks.
         __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8_t* quant, int& oldCoeff, uint16_t* dcHfcodes, int* dcHflengths, uint16_t* acHfcodes, int* acHflengths);
         __device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length);
-        
     public:
         int guesses;
         JPEGParser(std::string& imagePath);

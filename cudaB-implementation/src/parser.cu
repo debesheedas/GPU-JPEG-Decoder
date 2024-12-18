@@ -107,7 +107,7 @@ void JPEGParser::extract() {
         } else if (marker == MARKERS[2]) {
             stream->getMarker();
             uint8_t destination = stream->getByte();
-            uint8_t* host_quantTable1 = new uint8_t[64];
+            uint8_t host_quantTable1 [64];
             stream->getNBytes(host_quantTable1, 64);
             cudaMalloc((void**)&this->quantTable1, 64 * sizeof(uint8_t));
             cudaMemcpy(this->quantTable1, host_quantTable1, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
@@ -116,7 +116,7 @@ void JPEGParser::extract() {
                 stream->getMarker();
                 destination = stream->getByte();
                 this->quantTable2 = new uint8_t[64];
-                uint8_t* host_quantTable2 = new uint8_t[64];
+                uint8_t host_quantTable2[64];
                 stream->getNBytes(host_quantTable2, 64);
                 cudaMalloc((void**)&this->quantTable2, 64 * sizeof(uint8_t));
                 cudaMemcpy(this->quantTable2, host_quantTable2, 64 * sizeof(uint8_t), cudaMemcpyHostToDevice);
@@ -175,7 +175,7 @@ void JPEGParser::extract() {
             stream->getNBytes(this->startOfScan, (int) tableSize - 2);
             uint8_t curByte, prevByte = 0x00;
             size_t size = 5 * 1024 * 1024;
-            uint8_t* host_imageData = new uint8_t[size];
+            uint8_t host_imageData[size];
             
             while (true) {
                 curByte = stream->getByte();

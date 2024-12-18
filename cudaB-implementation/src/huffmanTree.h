@@ -49,9 +49,8 @@ class HuffmanTree {
         uint8_t traverseTree(HuffmanTreeNode* cur, Stream* st);
         uint8_t getCode(Stream* st);
         void printCodes();
-        uint16_t* codes;
-        int* codeLengths;
-        //__device__ static uint8_t getCode(uint8_t* bitStream, int& bitOffset);
+        uint16_t codes[256];
+        int codeLengths[256];
 };
 
 #endif
