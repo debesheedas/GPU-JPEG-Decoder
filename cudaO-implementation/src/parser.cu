@@ -433,14 +433,6 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
 
     __syncthreads();
 
-    // Iterate over pixels handled by this thread
-    if (threadId == 0) {
-        for (int i = 0; i < 3; i++) {
-            printf("rgb rgb rgb %d, %d, %d \n", rgbChannels[i], rgbChannels[i+64], rgbChannels[i+128]);
-        }
-    }
-
-
     pixelIndex = threadId;
     while (pixelIndex * 8 < 3 * totalPixels) {     
         int index = pixelIndex % totalPixels;
@@ -459,20 +451,6 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
 
     __syncthreads();
 
-    // Iterate over pixels handled by this thread
-    if (threadId == 0) {
-        int index = 576; // so mapping index 192
-        for (int i = 0; i < 3; i++) {
-            // int rem = index % 192;
-            // int block = index / 192;
-            // int index = block * 192 + rem;
-            // int block = index / 192;
-            // int actIndex = block * 64;
-            printf("%d, %d, %d \n", rgbChannels[index], rgbChannels[index+64], rgbChannels[index+128]);
-            index++;
-        }
-    }
-     __syncthreads();
     performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
 }
 
