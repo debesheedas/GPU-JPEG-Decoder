@@ -310,9 +310,9 @@ __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
 }
 
 __device__ void performHuffmanDecoding(uint8_t* imageData, int16_t* yCrCbChannels, uint16_t* hfCodes, int* hfLengths, int width, int height) {
-    int16_t* curLuminous = yCrCbChannels;
-    int16_t* curChromRed = yCrCbChannels + width * height;
-    int16_t* curChromYel = yCrCbChannels + 2 * width * height;
+    // int16_t* curLuminous = yCrCbChannels;
+    // int16_t* curChromRed = yCrCbChannels + width * height;
+    // int16_t* curChromYel = yCrCbChannels + 2 * width * height;
     int oldLumCoeff = 0, oldCbdCoeff = 0, oldCrdCoeff = 0;
     int bitOffset = 0;
 
@@ -321,21 +321,21 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int16_t* yCrCbChannel
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            bitOffset = buildMCU(curLuminous, imageData, bitOffset, oldLumCoeff, hfCodes, hfLengths, hfCodes + 512, hfLengths+ 512);
-            bitOffset = buildMCU(curChromRed, imageData, bitOffset, oldCbdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-            bitOffset = buildMCU(curChromYel, imageData, bitOffset, oldCrdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-            curLuminous += 64;
-            curChromRed += 64;
-            curChromYel += 64;
+            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldLumCoeff, hfCodes, hfLengths, hfCodes + 512, hfLengths+ 512);
+            yCrCbChannels = yCrCbChannels + 64;
+            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldCbdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
+            yCrCbChannels = yCrCbChannels + 64;
+            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldCrdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
+            yCrCbChannels = yCrCbChannels + 64;
         }
     }
 }
 
 __device__ void performZigzagReordering(int16_t* yCrCbChannels, int16_t* rgbChannels, uint8_t* quantTables,
-                                        int blockIndex, int threadIndexInBlock, int threadId, int pixelIndex, int totalPixels, int channelId, int* zigzagLocations) {
+                                        int blockIndex, int withinBlock, int channelId, int inBlockIndex, int pixelIndex, int* zigzagLocations) {
 
-    rgbChannels[channelId * totalPixels + pixelIndex] = yCrCbChannels[channelId * totalPixels+blockIndex * 64 + zigzagLocations
-    [threadIndexInBlock]] * quantTables[(64 & -(channelId > 0)) + zigzagLocations[threadIndexInBlock]];
+    rgbChannels[pixelIndex] = yCrCbChannels[channelId * 64+blockIndex * 192 + zigzagLocations
+    [inBlockIndex]] * quantTables[(64 & -(channelId > 0)) + zigzagLocations[inBlockIndex]];
 }
 
 __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChannels,
@@ -358,9 +358,13 @@ __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChan
         int actualIndex = globalRow * width + globalColumn;
 
         // Retrieve pixel data and perform the color conversion
-        float red = rgbChannels[2*totalPixels+i] * (2 - 2 * 0.299) + rgbChannels[i];
-        float blue = rgbChannels[totalPixels + i] * (2 - 2 * 0.114) + rgbChannels[i];
-        float green = (rgbChannels[i] - 0.114 * blue - 0.299 * red) / 0.587;
+        int ij = i / 64;
+        ij = ij * 192;
+        ij = ij + (i%64);
+
+        float red = rgbChannels[2*64+ij] * (2 - 2 * 0.299) + rgbChannels[ij];
+        float blue = rgbChannels[64 + ij] * (2 - 2 * 0.114) + rgbChannels[ij];
+        float green = (rgbChannels[ij] - 0.114 * blue - 0.299 * red) / 0.587;
 
         // Clamp values to [0, 255]
         outputChannels[3*actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
@@ -407,18 +411,35 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
 
     pixelIndex = threadId;
     while (pixelIndex < 3 * totalPixels) {
-        int channel = pixelIndex / totalPixels;
-        int index = pixelIndex % totalPixels;
-        int threadIndexInBlock = index % 64;
-        int blockIndex = index / 64;
+        int block = pixelIndex / 192;
+        int withinBlock = pixelIndex % 192;
+        int channel = withinBlock / 64;
+        int inBlockIndex = withinBlock % 64;
+
 
         performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
-                                blockIndex, threadIndexInBlock, threadId, index, totalPixels, channel, zigzagMap);
+                                block, withinBlock, channel, inBlockIndex, pixelIndex, zigzagMap);
+
+        // int channel = pixelIndex / totalPixels;
+        // int index = pixelIndex % totalPixels;
+        // int threadIndexInBlock = index % 64;
+        // int blockIndex = index / 64;
+
+        // performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
+        //                         blockIndex, threadIndexInBlock, threadId, index, totalPixels, channel, zigzagMap);
 
         pixelIndex += blockSize;
     }
 
     __syncthreads();
+
+    // Iterate over pixels handled by this thread
+    if (threadId == 0) {
+        for (int i = 0; i < 3; i++) {
+            printf("rgb rgb rgb %d, %d, %d \n", rgbChannels[i], rgbChannels[i+64], rgbChannels[i+128]);
+        }
+    }
+
 
     pixelIndex = threadId;
     while (pixelIndex * 8 < 3 * totalPixels) {     
@@ -439,6 +460,19 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
     __syncthreads();
 
     // Iterate over pixels handled by this thread
+    if (threadId == 0) {
+        int index = 576; // so mapping index 192
+        for (int i = 0; i < 3; i++) {
+            // int rem = index % 192;
+            // int block = index / 192;
+            // int index = block * 192 + rem;
+            // int block = index / 192;
+            // int actIndex = block * 64;
+            printf("%d, %d, %d \n", rgbChannels[index], rgbChannels[index+64], rgbChannels[index+128]);
+            index++;
+        }
+    }
+     __syncthreads();
     performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
 }
 
