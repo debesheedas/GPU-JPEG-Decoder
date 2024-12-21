@@ -1,4 +1,5 @@
 #include "huffmanTree.h"
+#include <iostream>
 
 // Constructor for HuffmanTree
 HuffmanTree::HuffmanTree(const std::vector<uint8_t>& bytes) {
@@ -106,8 +107,6 @@ void HuffmanTree::clearTree(HuffmanTreeNode* node) {
 
     clearTree(node->left);
     clearTree(node->right);
-    // delete node->left;
-    // delete node->right;
     delete node;
 }
 

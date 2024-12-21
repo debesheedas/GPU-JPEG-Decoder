@@ -3,7 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Define benchmark parameters
-versions = ['jpeglib', 'zune', 'cpp', 'cudaO', 'cudaU']
+#versions = ['jpeglib', 'zune','nvjpeg', 'cpp', 'cudaH']
+#versions = ['jpeglib', 'zune', 'cpp', 'nvjpeg', 'cudaH', 'cudaO']
+#versions = ['jpeglib', 'nvjpeg', 'cpp', 'cudaU', 'cudaB']
+versions = ['jpeglib', 'nvjpeg', 'cudaO']
 
 
 sizes = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]

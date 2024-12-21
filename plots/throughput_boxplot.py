@@ -4,7 +4,7 @@ import numpy as np
 
 # Define benchmark parameters
 #versions = ['zune', 'cudaO', 'cpp', 'jpeglib']
-versions = ['cpp', 'zune', 'jpeglib','cudaU', 'cudaO']
+versions = ['cpp', 'zune', 'jpeglib','cudaO']
 base_path = '/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/'
 
 # Function to extract throughput data in MB/sec from the benchmark results text file

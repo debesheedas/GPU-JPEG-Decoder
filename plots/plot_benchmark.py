@@ -2,8 +2,9 @@ import os
 import json
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from statistics import mean
 
-versions = ['zune', 'cudaO', 'cudaU', 'cudaOB']
+versions = ['cudaH', 'nvjpeg']
 
 sizes = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000]
 
@@ -45,6 +46,13 @@ plt.tight_layout()
 # Save the plot to a file
 output_path = '/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/plots/benchmark_decoding_time_plot.png'
 plt.savefig(output_path)  # Save as PNG file
+
+# avg = []
+# for i in range(10):
+#     avg.append(average_times['nvjpeg'][i]/average_times['cudaH'][i])
+# print(avg)
+# print("average speedup: ", mean(avg))
+# print("max speedup: ", max(avg))
 
 # Display the plot
 # plt.show()

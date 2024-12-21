@@ -23,7 +23,7 @@ list(APPEND CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES "/usr/local/cuda/lib64")
 # Add executables (decoder and benchmark_test)
 
 add_executable(decoder
-    ../main.cpp
+    ../main.cu
     ../src/parser.cu
     ../src/huffmanTree.cpp
     ../utils/stream.cpp

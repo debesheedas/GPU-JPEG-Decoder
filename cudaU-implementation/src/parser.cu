@@ -364,8 +364,8 @@ __device__ int buildMCU(int* outBuffer, uint8_t* imageData, int bitOffset, uint8
         bits = getNBits(imageData, bitOffset, code);
         if (length < 64) {
             decoded = decodeNumber(code, bits);
-            int val;
-            val = decoded * (int) quant[length];
+            // int val;
+            // val = decoded * (int) quant[length];
             //outBuffer[length] = val;
             outBuffer[length] = decoded;
             // printf("ac %d %d %d\n", decoded, (int) quant[length], decoded * (int) quant[length]);
@@ -431,6 +431,11 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int* arr_l, int* arr_
             curChromRed += 64;
             curChromYel += 64;
         }
+    }
+    for(int i = 0; i < 10; i++) {
+        // printf("Hi");
+        // printf("%d %d %d\n",  yCrCbChannels[i],  yCrCbChannels[width * height + i], yCrCbChannels[2*width * height + i]);
+        printf("%d %d %d\n",  arr_l[i], arr_r[i], arr_y[i]);
     }
 }
 
@@ -656,7 +661,7 @@ void JPEGParser::write() {
     cudaFree(blueOutput);
 
     // Writing the decoded channels to a file instead of displaying using opencv
-    fs::path output_dir = "../testing/cudaUF_output_arrays"; // Change the directory name here for future CUDA implementations
+    fs::path output_dir = "../testing/cudaU_output_arrays"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / this->filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);
