@@ -363,9 +363,9 @@ __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChan
         float green = (rgbChannels[i] - 0.114 * blue - 0.299 * red) / 0.587;
 
         // Clamp values to [0, 255]
-        outputChannels[actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
-        outputChannels[totalPixels+ actualIndex] = min(max(static_cast<int16_t>(green + 128), 0), 255);
-        outputChannels[2*totalPixels+actualIndex] = min(max(static_cast<int16_t>(blue + 128), 0), 255);
+        outputChannels[3*actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
+        outputChannels[3*actualIndex+1] = min(max(static_cast<int16_t>(green + 128), 0), 255);
+        outputChannels[3*actualIndex+2] = min(max(static_cast<int16_t>(blue + 128), 0), 255);
     }
 }
 
@@ -480,10 +480,17 @@ void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*&
 void write(int16_t* outputChannels, int width, int height, std::string filename) {
     ImageChannels channels(height * width);
     size_t channelSize = width * height * sizeof(int16_t);
-    cudaMemcpy(channels.getR().data(), outputChannels, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels.getG().data(), outputChannels+width*height, channelSize, cudaMemcpyDeviceToHost);
-    cudaMemcpy(channels.getB().data(), outputChannels+2*width*height, channelSize, cudaMemcpyDeviceToHost);
 
+    std::vector<int16_t> tempChannels(width*height*3);
+    cudaMemcpy(tempChannels.data(), outputChannels, channelSize*3, cudaMemcpyDeviceToHost);
+    //cudaMemcpy(channels.getG().data(), outputChannels+width*height, channelSize, cudaMemcpyDeviceToHost);
+    //cudaMemcpy(channels.getB().data(), outputChannels+2*width*height, channelSize, cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < width*height; i++) {
+        channels.getR()[i] = tempChannels[3*i];
+        channels.getG()[i] = tempChannels[3*i+1];
+        channels.getB()[i] = tempChannels[3*i+2];
+    }
     // Writing the decoded channels to a file instead of displaying using opencv
     fs::path output_dir = "../testing/cudaO_output_arrays";
     // fs::path output_dir = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/bench"; // Change the directory name here for future CUDA implementations
