@@ -438,13 +438,7 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
         int index = pixelIndex % totalPixels;
         int start = (index / 8) * 64 + (index % 8) * 8;
         idctRow(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start);
-        pixelIndex += blockSize;
-    }
-
-    pixelIndex = threadId;
-    while (pixelIndex * 8 < 3 * totalPixels) {
-        int index = pixelIndex % totalPixels;
-        int start = (index / 8) * 64 + (index % 8);
+        start = (index / 8) * 64 + (index % 8);
         idctCol(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start);
         pixelIndex += blockSize;
     }
