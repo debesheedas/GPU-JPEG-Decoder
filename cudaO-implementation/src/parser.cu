@@ -405,34 +405,35 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
     }
     __syncthreads();
 
-    for (int channel = 0; channel < 3; channel++) {
-        pixelIndex = threadId;
-        while (pixelIndex < totalPixels) {
-            int threadIndexInBlock = pixelIndex % 64;
-            int blockIndex = pixelIndex / 64;
+    pixelIndex = threadId;
+    while (pixelIndex < 3 * totalPixels) {
+        int channel = pixelIndex / totalPixels;
+        int index = pixelIndex % totalPixels;
+        int threadIndexInBlock = index % 64;
+        int blockIndex = index / 64;
 
-            performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
-                                    blockIndex, threadIndexInBlock, threadId, pixelIndex, totalPixels, channel, zigzagMap);
+        performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
+                                blockIndex, threadIndexInBlock, threadId, index, totalPixels, channel, zigzagMap);
 
-            pixelIndex += blockSize;
-        }
+        pixelIndex += blockSize;
     }
+
     __syncthreads();
 
-    for (int channel = 0; channel < 3; channel++) {
-        pixelIndex = threadId;
-        while (pixelIndex * 8 < totalPixels) {        
-            int start = (pixelIndex / 8) * 64 + (pixelIndex % 8) * 8;
-            idctRow(rgbChannels + channel * totalPixels + start);
-            pixelIndex += blockSize;
-        }
+    pixelIndex = threadId;
+    while (pixelIndex * 8 < 3 * totalPixels) {     
+        int index = pixelIndex % totalPixels;
+        int start = (index / 8) * 64 + (index % 8) * 8;
+        idctRow(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start);
+        pixelIndex += blockSize;
+    }
 
-        pixelIndex = threadId;
-        while (pixelIndex * 8 < totalPixels) {
-            int start = (pixelIndex / 8) * 64 + (pixelIndex % 8);
-            idctCol(rgbChannels + channel * totalPixels + start);
-            pixelIndex += blockSize;
-        }
+    pixelIndex = threadId;
+    while (pixelIndex * 8 < 3 * totalPixels) {
+        int index = pixelIndex % totalPixels;
+        int start = (index / 8) * 64 + (index % 8);
+        idctCol(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start);
+        pixelIndex += blockSize;
     }
 
     __syncthreads();

@@ -48,8 +48,8 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
 
     // Define batch size (adjust based on available memory)
-    size_t batchSize = 1000; // Example batch size
-    int threads = 32; 
+    size_t batchSize = 3000; // Example batch size
+    int threads = 32;
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
     std::cout<< "num batches " << numBatches << " | numImages " << numImages << std::endl;
     
@@ -82,9 +82,13 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
             cudaEvent_t batchStart, batchStop;
             cudaEventCreate(&batchStart);
             cudaEventCreate(&batchStop);
+
+            nvtxRangePushA("BatchDecodeKernel Execution");
             cudaEventRecord(batchStart);
-            batchDecodeKernel<<<currentBatchSize,threads>>>(deviceStructs);
+            batchDecodeKernel<<<currentBatchSize, threads>>>(deviceStructs);
             cudaEventRecord(batchStop);
+            nvtxRangePop();  // End NVTX marker
+            
             cudaEventSynchronize(batchStop);
             cudaDeviceSynchronize();
             cudaError_t err = cudaGetLastError();
@@ -134,7 +138,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
 }
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_through";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/cudaO-implementation/benchmark_thoughput/benchmarking_dataset_through";
 
     std::vector<std::string> imagePaths = getAllImages(datasetPath);
 

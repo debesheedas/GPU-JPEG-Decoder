@@ -33,7 +33,6 @@ __device__ void getNBytes(uint8_t* arr, int length, uint8_t* data, int& position
 
 __device__ int16_t decodeNumber(uint8_t code, int bits) {
     int l = 1 << (code - 1);  // Calculate 2^(code - 1) using bit shift
-    
     if (bits >= l) {
         return bits;
     } else {
