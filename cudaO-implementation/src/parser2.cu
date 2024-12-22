@@ -314,9 +314,9 @@ __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
 }
 
 __device__ void performHuffmanDecoding(uint8_t* imageData, int16_t* yCrCbChannels, uint16_t* hfCodes, int* hfLengths, int width, int height) {
-    // int16_t* curLuminous = yCrCbChannels;
-    // int16_t* curChromRed = yCrCbChannels + width * height;
-    // int16_t* curChromYel = yCrCbChannels + 2 * width * height;
+    int16_t* curLuminous = yCrCbChannels;
+    int16_t* curChromRed = yCrCbChannels + width * height;
+    int16_t* curChromYel = yCrCbChannels + 2 * width * height;
     int oldLumCoeff = 0, oldCbdCoeff = 0, oldCrdCoeff = 0;
     int bitOffset = 0;
 
@@ -325,100 +325,56 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int16_t* yCrCbChannel
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldLumCoeff, hfCodes, hfLengths, hfCodes + 512, hfLengths+ 512);
-            yCrCbChannels = yCrCbChannels + 64;
-            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldCbdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-            yCrCbChannels = yCrCbChannels + 64;
-            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldCrdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-            yCrCbChannels = yCrCbChannels + 64;
+            bitOffset = buildMCU(curLuminous, imageData, bitOffset, oldLumCoeff, hfCodes, hfLengths, hfCodes + 512, hfLengths+ 512);
+            bitOffset = buildMCU(curChromRed, imageData, bitOffset, oldCbdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
+            bitOffset = buildMCU(curChromYel, imageData, bitOffset, oldCrdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
+            // if (x == 30 && y==0) {
+            //     printf("%d %d %d \n", curLuminous[0], curChromRed[0], curChromYel[0]);
+            // }
+            curLuminous += 64;
+            curChromRed += 64;
+            curChromYel += 64;
+            
         }
     }
 }
 
-// __device__ void performHuffmanDecoding(uint8_t* imageData, int16_t* yCrCbChannels, uint16_t* hfCodes, int* hfLengths, int width, int height, int& oldLumCoeff, int& oldCbdCoeff, int& oldCrdCoeff, int bitoffset) {
-//     bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldLumCoeff, hfCodes, hfLengths, hfCodes + 512, hfLengths+ 512);
-//     yCrCbChannels = yCrCbChannels + 64;
-//     bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldCbdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-//     yCrCbChannels = yCrCbChannels + 64;
-//     bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldCrdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-//     yCrCbChannels = yCrCbChannels + 64;
-// }
-
-// __device__ void performZigzagReordering(int16_t* yCrCbChannels, int16_t* rgbChannels, uint8_t* quantTables,
-//                                         int blockIndex, int withinBlock, int channelId, int inBlockIndex, int pixelIndex, int* zigzagLocations) {
-
-//     rgbChannels[pixelIndex] = yCrCbChannels[channelId * 64+blockIndex * 192 + zigzagLocations
-//     [inBlockIndex]] * quantTables[(64 & -(channelId > 0)) + zigzagLocations[inBlockIndex]];
-// }
-
 __device__ void performZigzagReordering(int16_t* yCrCbChannels, int16_t* rgbChannels, uint8_t* quantTables,
-                                       int channelId, int location, int threadId, int* zigzagLocations) {
+                                        int blockIndex, int threadIndexInBlock, int threadId, int pixelIndex, int totalPixels, int channelId, int* zigzagLocations) {
 
-    rgbChannels[location] = yCrCbChannels[channelId * 64 + zigzagLocations
-    [threadId]] * quantTables[(64 & -(channelId > 0)) + zigzagLocations[threadId]];
+    rgbChannels[channelId * totalPixels + pixelIndex] = yCrCbChannels[channelId * totalPixels+blockIndex * 64 + zigzagLocations
+    [threadIndexInBlock]] * quantTables[(64 & -(channelId > 0)) + zigzagLocations[threadIndexInBlock]];
 }
 
-// __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChannels,
-//                                        int totalPixels, int width, int threadId, int blockDimGridDim) {
-//     for (int i = threadId; i < totalPixels; i += blockDimGridDim) {
-//         int blockId = i / 64;
-//         int blockRow = blockId / (width / 8);
-//         int blockColumn = blockId % (width / 8);
-
-//         int rowStart = blockRow * 8;
-//         int columnStart = blockColumn * 8;
-
-//         int pixelIndexInBlock = i % 64;
-//         int rowInBlock = pixelIndexInBlock / 8;
-//         int columnInBlock = pixelIndexInBlock % 8;
-
-//         int globalRow = rowStart + rowInBlock;
-//         int globalColumn = columnStart + columnInBlock;
-
-//         int actualIndex = globalRow * width + globalColumn;
-
-//         // Retrieve pixel data and perform the color conversion
-//         int ij = i / 64;
-//         ij = ij * 192;
-//         ij = ij + (i%64);
-
-//         float red = rgbChannels[2*64+ij] * (2 - 2 * 0.299) + rgbChannels[ij];
-//         float blue = rgbChannels[64 + ij] * (2 - 2 * 0.114) + rgbChannels[ij];
-//         float green = (rgbChannels[ij] - 0.114 * blue - 0.299 * red) / 0.587;
-
-//         // Clamp values to [0, 255]
-//         outputChannels[3*actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
-//         outputChannels[3*actualIndex+1] = min(max(static_cast<int16_t>(green + 128), 0), 255);
-//         outputChannels[3*actualIndex+2] = min(max(static_cast<int16_t>(blue + 128), 0), 255);
-//     }
-// }
-
 __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChannels,
-                                      int width, int threadId, int blockId) {
-    int blockRow = blockId / (width / 8);
-    int blockColumn = blockId % (width / 8);
+                                       int totalPixels, int width, int threadId, int blockDimGridDim) {
+    for (int i = threadId; i < totalPixels; i += blockDimGridDim) {
+        int blockId = i / 64;
+        int blockRow = blockId / (width / 8);
+        int blockColumn = blockId % (width / 8);
 
-    int rowStart = blockRow * 8;
-    int columnStart = blockColumn * 8;
+        int rowStart = blockRow * 8;
+        int columnStart = blockColumn * 8;
 
-    int pixelIndexInBlock = threadId;
-    int rowInBlock = pixelIndexInBlock / 8;
-    int columnInBlock = pixelIndexInBlock % 8;
+        int pixelIndexInBlock = i % 64;
+        int rowInBlock = pixelIndexInBlock / 8;
+        int columnInBlock = pixelIndexInBlock % 8;
 
-    int globalRow = rowStart + rowInBlock;
-    int globalColumn = columnStart + columnInBlock;
+        int globalRow = rowStart + rowInBlock;
+        int globalColumn = columnStart + columnInBlock;
 
-    int actualIndex = globalRow * width + globalColumn;
+        int actualIndex = globalRow * width + globalColumn;
 
+        // Retrieve pixel data and perform the color conversion
+        float red = rgbChannels[2*totalPixels+i] * (2 - 2 * 0.299) + rgbChannels[i];
+        float blue = rgbChannels[totalPixels + i] * (2 - 2 * 0.114) + rgbChannels[i];
+        float green = (rgbChannels[i] - 0.114 * blue - 0.299 * red) / 0.587;
 
-    float red = rgbChannels[128+threadId] * (2 - 2 * 0.299) + rgbChannels[threadId];
-    float blue = rgbChannels[64 + threadId] * (2 - 2 * 0.114) + rgbChannels[threadId];
-    float green = (rgbChannels[threadId] - 0.114 * blue - 0.299 * red) / 0.587;
-
-    // Clamp values to [0, 255]
-    outputChannels[3*actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
-    outputChannels[3*actualIndex+1] = min(max(static_cast<int16_t>(green + 128), 0), 255);
-    outputChannels[3*actualIndex+2] = min(max(static_cast<int16_t>(blue + 128), 0), 255);
+        // Clamp values to [0, 255]
+        outputChannels[actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
+        outputChannels[totalPixels+ actualIndex] = min(max(static_cast<int16_t>(green + 128), 0), 255);
+        outputChannels[2*totalPixels+actualIndex] = min(max(static_cast<int16_t>(blue + 128), 0), 255);
+    }
 }
 
 __global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations) {
@@ -438,134 +394,89 @@ __global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t
                 threadId, blockSize);
 }
 
-// __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
-
-//     __shared__ int zigzagMap[64];
-
-//     int pixelIndex = threadId;
-//     while (pixelIndex < 64) {
-//         zigzagMap[pixelIndex] = zigzagLocations[pixelIndex];
-//         pixelIndex += blockSize;
-//     }
-
-
-//     __syncthreads();
-//     int totalPixels = width * height;
-//     pixelIndex = threadId;
-//     if (threadId==0) {
-//         performHuffmanDecoding(imageData, yCrCbChannels, hfCodes, hfLengths, width, height);
-//     }
-//     __syncthreads();
-
-//     pixelIndex = threadId;
-//     while (pixelIndex < 3 * totalPixels) {
-//         int block = pixelIndex / 192;
-//         int withinBlock = pixelIndex % 192;
-//         int channel = withinBlock / 64;
-//         int inBlockIndex = withinBlock % 64;
-
-
-//         performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
-//                                 block, withinBlock, channel, inBlockIndex, pixelIndex, zigzagMap);
-
-//         // int channel = pixelIndex / totalPixels;
-//         // int index = pixelIndex % totalPixels;
-//         // int threadIndexInBlock = index % 64;
-//         // int blockIndex = index / 64;
-
-//         // performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
-//         //                         blockIndex, threadIndexInBlock, threadId, index, totalPixels, channel, zigzagMap);
-
-//         pixelIndex += blockSize;
-//     }
-
-//     __syncthreads();
-
-//     pixelIndex = threadId;
-//     while (pixelIndex * 8 < 3 * totalPixels) {     
-//         int index = pixelIndex % totalPixels;
-//         int start = (index / 8) * 64 + (index % 8) * 8;
-//         idctRow(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start);
-//         start = (index / 8) * 64 + (index % 8);
-//         idctCol(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start);
-//         pixelIndex += blockSize;
-//     }
-
-//     __syncthreads();
-
-//     performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
-// }
-
 __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
 
-    __shared__ int zigzagMap[64];
-    __shared__ int16_t outputBlocks[256];
-    __shared__ int16_t inputBlocks[192];
+    __shared__ int zigzagMap[1024];
 
-    int16_t* curStart = inputBlocks;
+    int pixelIndex = threadId;
+    while (pixelIndex < 64) {
+        zigzagMap[pixelIndex] = zigzagLocations[pixelIndex];
+        pixelIndex += blockSize;
+    }
 
+
+    __syncthreads();
     int totalPixels = width * height;
-    int oldLumCoeff = 0, oldCbdCoeff = 0, oldCrdCoeff = 0;
-    int bitOffset = 0;
-
-    int xBlocks = width / 8;
-    int yBlocks = height / 8;
-    
-    zigzagMap[threadId] = zigzagLocations[threadId];
+    pixelIndex = threadId;
+    if (threadId==0) {
+        performHuffmanDecoding(imageData, yCrCbChannels, hfCodes, hfLengths, width, height);
+    }
     __syncthreads();
 
-    // int pixelIndex = threadId;
+    pixelIndex = threadId;
+    while (pixelIndex < 3 * totalPixels) {
+        int channel = pixelIndex / totalPixels;
+        int index = pixelIndex % totalPixels;
+        int threadIndexInBlock = index % 64;
+        int blockIndex = index / 64;
 
-    for (int i = 0; i < xBlocks*yBlocks; i++) {
-        if (threadId==0) {
-            bitOffset = buildMCU(curStart, imageData, bitOffset, oldLumCoeff, hfCodes, hfLengths, hfCodes + 512, hfLengths+ 512);
-            curStart = curStart + 64;
-            bitOffset = buildMCU(curStart, imageData, bitOffset, oldCbdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-            curStart = curStart + 64;
-            bitOffset = buildMCU(curStart, imageData, bitOffset, oldCrdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-            curStart = inputBlocks;
-            // if (i == 30) {
-            //     printf("%d %d %d \n", inputBlocks[0], inputBlocks[64], inputBlocks[128]);
-            // }
-            // printf("Thread %d performing serial task for item %d\n", threadId, i);
-        }
-       __syncthreads();
-        // printf("Processing item %d by thread %d\n", i, threadId);
-        int pixelIndex = threadId;
-        while (pixelIndex < 64) {
-            performZigzagReordering(inputBlocks, outputBlocks, quantTables, 0, pixelIndex, pixelIndex, zigzagMap);
-            performZigzagReordering(inputBlocks, outputBlocks, quantTables,
-                                1, pixelIndex + 64, pixelIndex, zigzagMap);
-            performZigzagReordering(inputBlocks, outputBlocks, quantTables,
-                                2, pixelIndex + 128, pixelIndex, zigzagMap);
-            pixelIndex+= 32;
-        }   
-        // if (i == 0 && threadId == 0) {
-        //     printf("%d %d %d %d %d %d \n", outputBlocks[0], outputBlocks[1], outputBlocks[64], outputBlocks[65], outputBlocks[128], outputBlocks[129]);
-        // }
-        // (index / 8) * 64 + (index % 8) * 8
-        // idctRow(outputBlocks + (threadId * 8));
-        idctRow(outputBlocks + (threadId / 8) * 64 + (threadId % 8) * 8);
-        if (i == 0 && threadId == 0) {
-            printf("%d %d %d %d %d %d \n", outputBlocks[0], outputBlocks[1], outputBlocks[64], outputBlocks[65], outputBlocks[128], outputBlocks[129]);
-        }
-        __syncthreads();     
-        // (index / 8) * 64 + (index % 8);
-        idctCol(outputBlocks + ((threadId / 8)*64 + (threadId % 8)), threadId == 0 & i==0);
+        performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
+                                blockIndex, threadIndexInBlock, threadId, index, totalPixels, channel, zigzagMap);
 
-        //__syncthreads();        
-        if (i == 0 && threadId == 0) {
-            printf("%d %d %d %d %d %d \n", outputBlocks[0], outputBlocks[1], outputBlocks[64], outputBlocks[65], outputBlocks[128], outputBlocks[129]);
+        if (blockIndex == 0 && threadId == 0) {
+            printf("%d %d %d %d %d %d\n", rgbChannels[0], rgbChannels[1], rgbChannels[0+totalPixels], rgbChannels[1+totalPixels], rgbChannels[0+2*totalPixels], rgbChannels[1+2*totalPixels]);
         }
-        __syncthreads(); 
-
-        pixelIndex = threadId;
-        while (pixelIndex < 64) {
-            performColorConversion(outputBlocks, outputChannels, width, pixelIndex, i);       
-            pixelIndex += 32; 
-        }
-        __syncthreads();
+        pixelIndex += blockSize;
     }
+
+    __syncthreads();
+
+    // Iterate over pixels handled by this thread
+    // if (threadId == 0) {
+    //     for (int i = 0; i < 3; i++) {
+    //         printf("rgb rgb rgb %d, %d, %d \n", rgbChannels[i], rgbChannels[i+64], rgbChannels[i+128]);
+    //     }
+    // }
+
+    pixelIndex = threadId;
+    while (pixelIndex * 8 < 3 * totalPixels) {     
+        int index = pixelIndex % totalPixels;
+        int start = (index / 8) * 64 + (index % 8) * 8;
+        idctRow(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start);
+        pixelIndex += blockSize;
+    }
+    __syncthreads();
+    if (threadId == 0) {
+            printf("%d %d %d %d %d %d\n", rgbChannels[0], rgbChannels[1], rgbChannels[0+totalPixels], rgbChannels[1+totalPixels], rgbChannels[0+2*totalPixels], rgbChannels[1+2*totalPixels]);
+        }
+__syncthreads();
+    pixelIndex = threadId;
+    while (pixelIndex * 8 < 3 * totalPixels) {
+        int index = pixelIndex % totalPixels;
+        int start = (index / 8) * 64 + (index % 8);
+        idctCol(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start, pixelIndex == 0);
+        pixelIndex += blockSize;
+    }
+
+    __syncthreads();
+
+    if (threadId == 0) {
+            printf("%d %d %d %d %d %d\n", rgbChannels[0], rgbChannels[1], rgbChannels[0+totalPixels], rgbChannels[1+totalPixels], rgbChannels[0+2*totalPixels], rgbChannels[1+2*totalPixels]);
+        }
+
+    // Iterate over pixels handled by this thread
+    // Iterate over pixels handled by this thread
+    if (threadId == 0) {
+        int index = 192;
+        // for (int i = 0; i < 3; i++) {
+        //     printf("%d, %d, %d \n", rgbChannels[index], rgbChannels[index+totalPixels], rgbChannels[index+totalPixels*2]);
+        //     index++;
+        // }
+    }
+
+     __syncthreads();
+    
+    performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
 }
 
 __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
@@ -606,17 +517,10 @@ void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*&
 void write(int16_t* outputChannels, int width, int height, std::string filename) {
     ImageChannels channels(height * width);
     size_t channelSize = width * height * sizeof(int16_t);
+    cudaMemcpy(channels.getR().data(), outputChannels, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels.getG().data(), outputChannels+width*height, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels.getB().data(), outputChannels+2*width*height, channelSize, cudaMemcpyDeviceToHost);
 
-    std::vector<int16_t> tempChannels(width*height*3);
-    cudaMemcpy(tempChannels.data(), outputChannels, channelSize*3, cudaMemcpyDeviceToHost);
-    //cudaMemcpy(channels.getG().data(), outputChannels+width*height, channelSize, cudaMemcpyDeviceToHost);
-    //cudaMemcpy(channels.getB().data(), outputChannels+2*width*height, channelSize, cudaMemcpyDeviceToHost);
-
-    for (int i = 0; i < width*height; i++) {
-        channels.getR()[i] = tempChannels[3*i];
-        channels.getG()[i] = tempChannels[3*i+1];
-        channels.getB()[i] = tempChannels[3*i+2];
-    }
     // Writing the decoded channels to a file instead of displaying using opencv
     fs::path output_dir = "../testing/cudaO_output_arrays";
     // fs::path output_dir = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/bench"; // Change the directory name here for future CUDA implementations
