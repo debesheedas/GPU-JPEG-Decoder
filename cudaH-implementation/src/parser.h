@@ -6,9 +6,9 @@
 #include <iostream>
 #include <filesystem>
 
-#include "../utils/color.h"
-#include "idct.h"
+#include "../utils/utils.h"
 #include "huffmanTree.h"
+#include "../utils/stream.h"
 #include <cuda_runtime.h>
 
 #ifdef __APPLE__
@@ -19,55 +19,65 @@
     namespace fs = std::filesystem;
 #endif
 
+struct HostData {
+    std::string imagePath;
+    std::vector<uint8_t> imageData;
+    std::unordered_map<int,HuffmanTree*> huffmanTrees;
+};
+
+struct DeviceData {
+    uint8_t* quantTables;
+    int16_t* yCrCbChannels;
+    int16_t* rgbChannels;
+    int16_t* outputChannels;
+    int* zigzagLocations;         
+    int width;                  // Image width
+    int height;                 // Image height
+};
+
 const std::vector<uint16_t> MARKERS = {0xffd8, 0xffe0, 0xffdb, 0xffc0, 0xffc4, 0xffda};
+const int C1 = 2841; // 2048*sqrt(2)*cos(1*pi/16)
+const int C2 = 2676; // 2048*sqrt(2)*cos(2*pi/16)
+const int C3 = 2408; // 2048*sqrt(2)*cos(3*pi/16)
+const int C5 = 1609; // 2048*sqrt(2)*cos(5*pi/16)
+const int C6 = 1108; // 2048*sqrt(2)*cos(6*pi/16)
+const int C7 = 565;  // 2048*sqrt(2)*cos(7*pi/16)
+
+__global__ void batchDecodeKernel(DeviceData* deviceStructs);
+__device__ void decodeImage(int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, int* zigzagLocations, int threadId, int blockSize);
+__global__ void decodeKernel(int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, int* zigzagLocations);
+void allocate(int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height, int*& zigzagLocations);
+void performHuffmanDecoding(std::vector<uint8_t> imageData, int16_t* yCrCbChannels, std::unordered_map<int,HuffmanTree*> huffmanTrees, int width, int height);
+void extract(std::string imagePath, uint8_t*& quantTables,std::vector<uint8_t>& imageData, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees);
+void clean(uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, std::unordered_map<int,HuffmanTree*>& huffmanTrees);
+void write(int16_t* outputChannels, int width, int height, std::string filename);
+
+const int zigzagEntries[64] = {
+        0, 1, 5, 6, 14, 15, 27, 28,
+        2, 4, 7, 13, 16, 26, 29, 42,
+        3, 8, 12, 17, 25, 30, 41, 43,
+        9, 11, 18, 24, 31, 40, 44, 53,
+        10, 19, 23, 32, 39, 45, 52, 54,
+        20, 22, 33, 38, 46, 51, 55, 60,
+        21, 34, 37, 47, 50, 56, 59, 61,
+        35, 36, 48, 49, 57, 58, 62, 63
+    };
 
 /*
     Class for accessing the image channels of an image.
 */
 struct ImageChannels {
-    std::vector<std::vector<int>> channels;
+    std::vector<std::vector<int16_t>> channels;
 
     ImageChannels(int size)
-        : channels(6, std::vector<int>(size)) {}  // 6 channels, each with `size` elements
+        : channels(6, std::vector<int16_t>(size)) {}  // 6 channels, each with `size` elements
 
     // Accessor methods to get a reference to a specific channel
-    std::vector<int>& getY() { return channels[0]; }
-    std::vector<int>& getCr() { return channels[1]; }
-    std::vector<int>& getCb() { return channels[2]; }
-    std::vector<int>& getR() { return channels[3]; }
-    std::vector<int>& getG() { return channels[4]; }
-    std::vector<int>& getB() { return channels[5]; }
+    std::vector<int16_t>& getY() { return channels[0]; }
+    std::vector<int16_t>& getCr() { return channels[1]; }
+    std::vector<int16_t>& getCb() { return channels[2]; }
+    std::vector<int16_t>& getR() { return channels[3]; }
+    std::vector<int16_t>& getG() { return channels[4]; }
+    std::vector<int16_t>& getB() { return channels[5]; }
 };
 
-class JPEGParser {
-    private:
-        // Parts of the jpeg file.
-        std::string filename;
-        std::vector<uint8_t> readBytes;
-        std::vector<uint8_t> applicationHeader;
-
-        std::vector<uint8_t*> quantTables;
-
-        std::vector<uint8_t> startOfFrame;
-        std::unordered_map<int,std::vector<uint8_t>> huffmanTables;
-        std::unordered_map<int,HuffmanTree*> huffmanTrees;
-        std::vector<uint8_t> startOfScan;
-        std::vector<uint8_t> imageData;
-        ImageChannels* channels;
-
-        // Image features.
-        int height;
-        int width;
-
-        double* idctTable;
-        int* zigzag;
-
-        // Methods for extracting and building blocks.
-        void buildMCU(int* arr, Stream* imageStream, int hf, int quant, int& oldcoeff);
-    public:
-        JPEGParser(std::string& imagePath);
-        ~JPEGParser();
-        void extract();
-        void decode();
-        void write();
-};

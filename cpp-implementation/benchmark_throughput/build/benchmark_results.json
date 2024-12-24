@@ -1,6 +1,6 @@
 {
   "context": {
-    "date": "2024-12-11T22:42:39+01:00",
+    "date": "2024-12-18T22:10:45+01:00",
     "host_name": "davinci",
     "executable": "./benchmark_test",
     "num_cpus": 16,
@@ -32,27 +32,9 @@
         "num_sharing": 8
       }
     ],
-    "load_avg": [0.862793,1.05518,2.5415],
+    "load_avg": [1.04443,1.14746,0.922363],
     "library_version": "v1.9.0-18-gd99cdd73",
     "library_build_type": "release",
     "json_schema_version": 1
   },
   "benchmarks": [
-    {
-      "name": "BM_JPEGDecoder_AllImages/iterations:10",
-      "family_index": 0,
-      "per_family_instance_index": 0,
-      "run_name": "BM_JPEGDecoder_AllImages/iterations:10",
-      "run_type": "iteration",
-      "repetitions": 1,
-      "repetition_index": 0,
-      "threads": 1,
-      "iterations": 10,
-      "real_time": 1.2893845971487463e+04,
-      "cpu_time": 1.2892819798700000e+04,
-      "time_unit": "ms",
-      "bytes_per_sec": 7.0074316536943177e+06,
-      "throughput_images_per_sec": 3.1235608261821262e+01
-    }
-  ]
-}

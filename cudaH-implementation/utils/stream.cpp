@@ -1,4 +1,5 @@
 #include "stream.h"
+#include <iostream>
 
 Stream::Stream(std::vector<uint8_t>& data) {
     this->data = data;
@@ -37,17 +38,11 @@ uint16_t Stream::getMarker() {
 
 void Stream::getNBytes(std::vector<uint8_t>& arr, int length) {
     for (int i = 0; i < length; i++) {
-        arr.push_back(this->getByte());
-    }
-}
-
-void Stream::getNBytes(uint8_t* arr, int length) {
-    for (int i = 0; i < length; i++) {
         arr[i] = this->getByte();
     }
 }
 
-int Stream::decodeNumber(uint8_t code, int bits) {
+int16_t Stream::decodeNumber(uint8_t code, int bits) {
     int l = 1 << (code - 1);  // Calculate 2^(code - 1) using bit shift
     
     if (bits >= l) {

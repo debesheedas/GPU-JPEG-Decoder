@@ -36,6 +36,8 @@ void HuffmanTree::createNodes() {
             this->nodes.push_back(new HuffmanTreeNode(curVal, i+1, true));
         }
     }
+
+    delete[] lengths;
 }
 
 // Create codes for the tree

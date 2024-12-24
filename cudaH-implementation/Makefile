@@ -1,4 +1,5 @@
-decoder: main.cpp src/parser.cu src/huffmanTree.cpp src/idct.cu utils/stream.cpp utils/color.cpp
-	/usr/local/cuda/bin/nvcc --fmad=false --prec-div=true --prec-sqrt=true -o decoder main.cpp src/parser.cu src/huffmanTree.cpp src/idct.cu utils/stream.cpp utils/color.cpp
+decoder: main.cu src/parser.cu src/huffmanTree.cpp utils/stream.cpp utils/utils.cu
+	/usr/local/cuda/bin/nvcc --relocatable-device-code true -o decoder main.cu src/parser.cu src/huffmanTree.cpp utils/stream.cpp utils/utils.cu
+
 clean:
-	rm -rf decoder
+	rm -f decoder
