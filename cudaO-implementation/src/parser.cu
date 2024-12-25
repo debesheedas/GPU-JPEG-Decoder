@@ -393,7 +393,6 @@ __device__ void performZigzagReordering(int16_t* yCrCbChannels, int16_t* rgbChan
 
 __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChannels,
                                        int totalPixels, int width, int threadId, int blockSize) {
-    
     int pixelIndex = threadId;
     while (pixelIndex * 8 < totalPixels) {
         // do colour conversion row-wise
@@ -450,8 +449,6 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
         pixelIndex += blockSize;
     }
 
-
-    __syncthreads();
     int totalPixels = width * height;
     pixelIndex = threadId;
     if (threadId==0) {
