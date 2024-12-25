@@ -364,9 +364,6 @@ __global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t
     // int imageId = blockIdx.x;
     int threadId = threadIdx.x;
     int blockSize = blockDim.x;
-    __shared__ int zigzagMap[64];
-    __shared__ int16_t outputBlocks[256];
-    __shared__ int16_t inputBlocks[192];
 
     decodeImage(imageData,
                 yCrCbChannels,
@@ -378,10 +375,14 @@ __global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t
                 hfCodes,
                 hfLengths,
                 zigzagLocations,
-                threadId, blockSize, zigzagMap, outputBlocks, inputBlocks);
+                threadId, blockSize);
 }
 
-__device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize, int* zigzagMap, int16_t* outputBlocks, int16_t* inputBlocks) {
+__device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
+
+    __shared__ int zigzagMap[64];
+    __shared__ int16_t outputBlocks[256];
+    __shared__ int16_t inputBlocks[192];
 
     int16_t* curStart = inputBlocks;
 
@@ -442,9 +443,6 @@ __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
     int imageId = blockIdx.x;
     int threadId = threadIdx.x;
     int blockSize = blockDim.x;
-     __shared__ int zigzagMap[64];
-     __shared__ int16_t outputBlocks[256];
-    __shared__ int16_t inputBlocks[192];
 
     decodeImage(deviceStructs[imageId].imageData,
                 deviceStructs[imageId].yCrCbChannels,
@@ -456,7 +454,7 @@ __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
                 deviceStructs[imageId].hfCodes,
                 deviceStructs[imageId].hfLengths,
                 deviceStructs[imageId].zigzagLocations,
-                threadId, blockSize, zigzagMap, outputBlocks, inputBlocks);
+                threadId, blockSize);
 }
 
 void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {
