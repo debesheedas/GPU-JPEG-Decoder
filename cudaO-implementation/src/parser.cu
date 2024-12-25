@@ -124,17 +124,17 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
     const size_t lengthSize = 256 * sizeof(int);
     const size_t imageSize = width * height * sizeof(int16_t);
 
-    logCudaMemoryInfo("Before allocating Huffman codes and lengths");
+    // logCudaMemoryInfo("Before allocating Huffman codes and lengths");
     // Allocate Huffman codes and lengths
     checkCudaError(cudaMalloc((void**)&hfCodes, codeSize * 4), "Failed to allocate device memory for Huffman codes.");
     checkCudaError(cudaMalloc((void**)&hfLengths, lengthSize * 4), "Failed to allocate device memory for Huffman lengths.");
 
-    logCudaMemoryInfo("After allocating Huffman codes and lengths");
+    // logCudaMemoryInfo("After allocating Huffman codes and lengths");
 
     // Allocate zigzag table
     checkCudaError(cudaMalloc((void**)&zigzagLocations, 256 * sizeof(int)), "Failed to allocate device memory for zigzag table.");
     checkCudaError(cudaMemcpy(zigzagLocations, zigzagEntries, sizeof(int) * 64, cudaMemcpyHostToDevice), "Failed to copy entries for the zigzag table.");
-    logCudaMemoryInfo("After allocating zigzag table");
+    // logCudaMemoryInfo("After allocating zigzag table");
 
     int index = 0;
     for (int i = 0; i < 4; ++i) {
@@ -146,20 +146,20 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
         index++;
     }
 
-    logCudaMemoryInfo("Before allocating YCrCb, RGB, and output channels");
+    // logCudaMemoryInfo("Before allocating YCrCb, RGB, and output channels");
 
     // Allocate memory for image channels
     checkCudaError(cudaMalloc((void**)&yCrCbChannels, imageSize * 3), "Failed to allocate device memory for YCrCb channels.");
     checkCudaError(cudaMalloc((void**)&rgbChannels, imageSize * 3), "Failed to allocate device memory for RGB channels.");
     checkCudaError(cudaMalloc((void**)&outputChannels, imageSize * 3), "Failed to allocate device memory for output channels.");
 
-    logCudaMemoryInfo("After allocating YCrCb, RGB, and output channels");
+    // logCudaMemoryInfo("After allocating YCrCb, RGB, and output channels");
 
-    // Verify allocations
-    logCudaMemoryInfo("After all allocations");
-    std::cout << "Huffman tables memory: " << codeSize * 4 + lengthSize * 4 << " bytes\n";
-    std::cout << "Zigzag table memory: " << 256 * sizeof(int) << " bytes\n";
-    std::cout << "Image buffers memory (each): " << imageSize * 3 << " bytes\n";
+    // // Verify allocations
+    // logCudaMemoryInfo("After all allocations");
+    // std::cout << "Huffman tables memory: " << codeSize * 4 + lengthSize * 4 << " bytes\n";
+    // std::cout << "Zigzag table memory: " << 256 * sizeof(int) << " bytes\n";
+    // std::cout << "Image buffers memory (each): " << imageSize * 3 << " bytes\n";
 }
 
 void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
