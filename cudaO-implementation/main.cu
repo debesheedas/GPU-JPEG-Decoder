@@ -23,11 +23,12 @@ int main(int argc, char* argv[]) {
     int* zigzagLocations;
 
     uint8_t* imageData;
+    int imageDataLength;
     int width = 0;
     int height = 0;
     std::unordered_map<int, HuffmanTree*> huffmanTrees;
 
-    extract(imagePath, quantTables, imageData, width, height, huffmanTrees);
+    extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
     allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
 
     nvtxRangePush("Kernel Execution: decodeKernel");

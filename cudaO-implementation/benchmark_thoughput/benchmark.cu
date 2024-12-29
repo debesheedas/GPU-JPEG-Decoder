@@ -74,7 +74,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 DeviceData* data = &structs[i];
         
                 host_data->imagePath = imagePaths[globalIdx];
-                extract(host_data->imagePath, data->quantTables, data->imageData, data->width, data->height, host_data->huffmanTrees);
+                extract(host_data->imagePath, data->quantTables, data->imageData, data->imageDataLength, data->width, data->height, host_data->huffmanTrees);
                 allocate(data->hfCodes, data->hfLengths, host_data->huffmanTrees, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->width, data->height, data->zigzagLocations);
             }
             // Allocate memory for the current batch on the GPU

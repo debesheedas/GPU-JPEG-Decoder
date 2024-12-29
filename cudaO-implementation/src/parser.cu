@@ -10,7 +10,7 @@ __device__ void exclusivePrefixSum(int* sInfo, int totalSegments) {
     if (threadId >= totalSegments) return;
 
     // Load the `n` values into shared memory
-    temp[threadId] = (threadId < totalSegments) ? sInfo[threadId * 4 + 1] : 0;
+    temp[threadId] = sInfo[threadId * 4 + 1];
     __syncthreads();
 
     // Perform inclusive scan in shared memory
@@ -39,44 +39,43 @@ __device__ void exclusivePrefixSum(int* sInfo, int totalSegments) {
     }
 }
 
-__device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
-                        int& oldCoeff, uint16_t* dcHfcodes, int* dcHflengths, uint16_t* acHfcodes, int* acHflengths) {
-    int code = 0;
-    int code_length = 0;
-    match_huffman_code(imageData, bitOffset, dcHfcodes, dcHflengths, code, code_length);
-    // printf("dc code %d:\n", code);
-    bitOffset += code_length;
-    uint16_t bits = getNBits(imageData, bitOffset, code);
 
-    int16_t decoded = decodeNumber(code, bits); 
-    int16_t dcCoeff = decoded + oldCoeff;
-    // printf("dc coeff %d:\n", dcCoeff);
-    outBuffer[0] = dcCoeff;
+__device__ void parallelDifferenceDecodeDC(
+    int16_t* outBuffer, int totalBlocks, int threadId, int blockSize) {
+    extern __shared__ int16_t sharedDC[]; // Shared memory for DC coefficients
 
-    int length = 1;
-    while (length < 64) {
-        match_huffman_code(imageData, bitOffset, acHfcodes, acHflengths, code, code_length);
-        // printf("code %d:\n", code);
-        bitOffset += code_length;
-        if (code == 0) {
-            break;
-        }
-        // The first part of the AC key length is the number of leading zeros
-        if (code > 15) {
-            length += (code >> 4);
-            code = code & 0x0f;
-        }
-        bits = getNBits(imageData, bitOffset, code);
-        if (length < 64) {
-            decoded = decodeNumber(code, bits);
-            // printf("ac coeff %d:\n", decoded);
-            outBuffer[length] = decoded;
-            length++;
-        }
+    // Load DC coefficients into shared memory
+    int blockIndex = threadId;
+    while (blockIndex < totalBlocks) {
+        sharedDC[blockIndex] = outBuffer[blockIndex * 64]; // Load DC coefficient
+        blockIndex += blockSize;
     }
-    // Update oldCoeff for the next MCU
-    oldCoeff = dcCoeff;
-    return bitOffset;
+    __syncthreads();
+
+    // Perform parallel prefix sum (upsweep phase)
+    for (int stride = 1; stride < totalBlocks; stride *= 2) {
+        int index = (threadId + 1) * stride * 2 - 1;
+        if (index < totalBlocks) {
+            sharedDC[index] += sharedDC[index - stride];
+        }
+        __syncthreads();
+    }
+
+    // Downsweep phase to calculate prefix sum
+    for (int stride = totalBlocks / 2; stride > 0; stride /= 2) {
+        int index = (threadId + 1) * stride * 2 - 1;
+        if (index + stride < totalBlocks) {
+            sharedDC[index + stride] += sharedDC[index];
+        }
+        __syncthreads();
+    }
+
+    // Write results back to global memory
+    blockIndex = threadId;
+    while (blockIndex < totalBlocks) {
+        outBuffer[blockIndex * 64] = sharedDC[blockIndex]; // Write corrected DC coefficient
+        blockIndex += blockSize;
+    }
 }
 
 
@@ -149,53 +148,74 @@ __device__ bool isSynchronized(int* returnState, int* storedState) {
            storedState[3] == returnState[3];   // zig-zag index
 }
 
-__device__ void syncDecoders(
-    uint8_t* imageData, int16_t* outBuffer, int imageDataLength,
-    uint16_t* hfCodes, int* hfLengths, int segmentSize, int totalSegments) {
-    
-    extern __shared__ int sInfo[]; // Shared memory for synchronization state
+__device__ void parallelHuffManDecode(
+    uint8_t* imageData,        // Compressed bitstream for a single image
+    int imageDataLength,       // Length of the compressed bitstream (in bits)
+    int16_t* outBuffer,        // Output buffer for decoded coefficients
+    uint16_t* hfCodes,         // Huffman codes (DC/AC tables)
+    int* hfLengths,            // Huffman lengths (DC/AC tables)
+    int width,                 // Width of the image
+    int height,                // Height of the image
+    int blockSize              // Number of threads in the block
+) {
+    extern __shared__ int sInfo[]; // Shared memory for synchronization state (32 * 4 integers)
 
-    int threadId = threadIdx.x; 
+    int threadId = threadIdx.x; // Thread within the block
 
-    int seqInd = threadId;
-
-    int start = seqInd * segmentSize;
+    // Divide the bitstream dynamically into even parts
+    int segmentSize = (imageDataLength + blockSize - 1) / blockSize; // Divide evenly among each thread
+    int start = threadId * segmentSize;
     int end = min(start + segmentSize, imageDataLength);
 
-    // Decode the sequence assigned to this thread
-    int returnState[4];
-    decodeSequence(seqInd, start, end, false, true, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+    // Decode the segment assigned to this thread
+    int returnState[4]; // Array to hold decoding state [p, n, c, z]
+    decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
 
-    // Store the state in shared memory
-    sInfo[seqInd * 4 + 0] = returnState[0]; // Bit offset
-    sInfo[seqInd * 4 + 1] = returnState[1]; // Symbols decoded
-    sInfo[seqInd * 4 + 2] = returnState[2]; // Component
-    sInfo[seqInd * 4 + 3] = returnState[3]; // Zig-zag index
+    // Store the state in shared memory for synchronisation
+    sInfo[threadId * 4 + 0] = returnState[0]; // Bit offset
+    sInfo[threadId * 4 + 1] = returnState[1]; // Symbols decoded
+    sInfo[threadId * 4 + 2] = returnState[2]; // Component (Y/Cb/Cr)
+    sInfo[threadId * 4 + 3] = returnState[3]; // Zig-zag index
 
     __syncthreads();
 
-    // Perform overflow decoding if needed
-    ++seqInd; // Move to the next subsequence
-    while (seqInd < totalSegments && !isSynchronized(returnState, &sInfo[seqInd * 4])) {
+    // Synchronisation with the next segment (inter-segment sync only)
+    int seqInd = threadId + 1; // Check next segment
+    while (seqInd < 32 && !isSynchronized(returnState, &sInfo[seqInd * 4])) {
         decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
 
-        // Update shared sInfo with the new return state
+        // Update shared memory with new state
         sInfo[seqInd * 4 + 0] = returnState[0];
         sInfo[seqInd * 4 + 1] = returnState[1];
         sInfo[seqInd * 4 + 2] = returnState[2];
         sInfo[seqInd * 4 + 3] = returnState[3];
 
         __syncthreads();
-
-        ++seqInd;
+        seqInd++;
     }
 
     __syncthreads();
 
-    // Call the exclusive prefix sum
-    exclusivePrefixSum(sInfo, totalSegments);
-}
+    // Perform exclusive prefix sum to calculate offsets
+    exclusivePrefixSum(sInfo, blockDim.x);
+    if (threadId == 0) {
+        sInfo[1] = 0; // First `n` value is zero for prefix sum
+    }
 
+    // Re-decode with corrected offsets
+    if (threadId == 0) {
+        decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+    } else {
+        decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+    }
+
+    __syncthreads();
+    int totalBlocks = (width * height) / 64; // Total number of 8x8 blocks in the image
+    for (int c = 0; c < 3; ++c) { // Process each channel (Y, Cb, Cr)
+        parallelDifferenceDecodeDC(outBuffer + c * totalBlocks * 64, totalBlocks, threadId, blockSize);
+    }
+    __syncthreads();
+}
 
 
 
@@ -571,11 +591,12 @@ __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChan
     }
 }
 
-__global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations) {
+__global__ void decodeKernel(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations) {
     // int imageId = blockIdx.x;
     int threadId = threadIdx.x;
     int blockSize = blockDim.x;
     decodeImage(imageData,
+                imageDataLength,
                 yCrCbChannels,
                 rgbChannels,
                 outputChannels,
@@ -588,7 +609,7 @@ __global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t
                 threadId, blockSize);
 }
 
-__device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
+__device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
 
     __shared__ int zigzagMap[1024];
 
@@ -599,10 +620,9 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
     }
 
     int totalPixels = width * height;
-    pixelIndex = threadId;
-    if (threadId==0) {
-        performHuffmanDecoding(imageData, yCrCbChannels, hfCodes, hfLengths, width, height);
-    }
+    
+    parallelHuffManDecode(imageData, imageDataLength, yCrCbChannels, hfCodes, hfLengths);
+
     __syncthreads();
 
     for (int channel = 0; channel < 3; channel++) {
@@ -643,6 +663,7 @@ __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
     int threadId = threadIdx.x;
     int blockSize = blockDim.x;
     decodeImage(deviceStructs[imageId].imageData,
+                deviceStructs[imageId].imageDataLength,
                 deviceStructs[imageId].yCrCbChannels,
                 deviceStructs[imageId].rgbChannels,
                 deviceStructs[imageId].outputChannels,
