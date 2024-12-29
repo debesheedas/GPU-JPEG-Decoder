@@ -1,44 +1,94 @@
 #include "parser.h"
+#include <thrust/device_vector.h>
+#include <thrust/scan.h>
 
+__device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length) {
+    unsigned int extracted_bits = getNBits(stream, bit_offset, 16);
+    // Compare against Huffman table
+    for (int i = 0; i < 256; ++i) {
+        if (huff_bits[i] > 0 && huff_bits[i] <= 16) { // Valid bit length
+            unsigned int mask = (1 << huff_bits[i]) - 1;
+            if ((extracted_bits >> (16 - huff_bits[i]) & mask) == huff_codes[i]) {
+                code = i;
+                length = huff_bits[i];
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+// __device__ void exclusivePrefixSum(int* sInfo, int totalSegments) {
+//     extern __shared__ int temp[]; // Shared memory for scan
+
+//     int threadId = threadIdx.x;
+
+//     if (threadId >= totalSegments) return;
+
+//     // Load the `n` values into shared memory
+//     temp[threadId] = sInfo[threadId * 4 + 1];
+//     __syncthreads();
+
+//     // Perform inclusive scan in shared memory
+//     for (int stride = 1; stride < blockDim.x; stride *= 2) {
+//         int value = 0;
+//         if (threadId >= stride) {
+//             value = temp[threadId - stride];
+//         }
+//         __syncthreads();
+//         temp[threadId] += value;
+//         __syncthreads();
+//     }
+
+//     // Convert to exclusive scan
+//     if (threadId == 0) {
+//         temp[0] = 0; // First element is 0 for exclusive scan
+//     } else {
+//         int tempVal = temp[threadId];
+//         __syncthreads();
+//         temp[threadId] = tempVal;
+//     }
+
+//     // Write results back to global memory
+//     if (threadId < totalSegments) {
+//         sInfo[threadId * 4 + 1] = temp[threadId];
+//     }
+// }
 
 
 __device__ void exclusivePrefixSum(int* sInfo, int totalSegments) {
-    extern __shared__ int temp[]; // Shared memory for scan
-
     int threadId = threadIdx.x;
 
     if (threadId >= totalSegments) return;
 
-    // Load the `n` values into shared memory
-    temp[threadId] = sInfo[threadId * 4 + 1];
-    __syncthreads();
+    // Perform the prefix sum iteratively
+    for (int stride = 1; stride < totalSegments; stride *= 2) {
+        int temp = 0;
 
-    // Perform inclusive scan in shared memory
-    for (int stride = 1; stride < blockDim.x; stride *= 2) {
-        int value = 0;
+        // Load the value from the previous stride
         if (threadId >= stride) {
-            value = temp[threadId - stride];
+            temp = sInfo[(threadId - stride) * 4 + 1];
         }
         __syncthreads();
-        temp[threadId] += value;
+
+        // Update the current value in sInfo
+        if (threadId < totalSegments) {
+            sInfo[threadId * 4 + 1] += temp;
+        }
         __syncthreads();
     }
 
-    // Convert to exclusive scan
+    // Convert to exclusive prefix sum
     if (threadId == 0) {
-        temp[0] = 0; // First element is 0 for exclusive scan
+        sInfo[0 * 4 + 1] = 0; // First element is 0 for exclusive prefix sum
     } else {
-        int tempVal = temp[threadId];
         __syncthreads();
-        temp[threadId] = tempVal;
+        if (threadId < totalSegments) {
+            sInfo[threadId * 4 + 1] = sInfo[(threadId - 1) * 4 + 1];
+        }
     }
-
-    // Write results back to global memory
-    if (threadId < totalSegments) {
-        sInfo[threadId * 4 + 1] = temp[threadId];
-    }
+    __syncthreads();
 }
-
 
 __device__ void parallelDifferenceDecodeDC(
     int16_t* outBuffer, int totalBlocks, int threadId, int blockSize) {
@@ -84,6 +134,8 @@ __device__ void decodeSequence(
     int16_t* outBuffer, int* sInfo, uint8_t* imageData,
     int imageDataLength, uint16_t* hfCodes, int* hfLengths, int* returnState) {
 
+    //printf("Thread Starting: %d\n", threadIdx.x);
+
     // Decode state variables
     int p = start; // Start bit offset for the subsequence
     int n = 0;     // Number of decoded symbols
@@ -91,50 +143,85 @@ __device__ void decodeSequence(
     int z = 0;     // Zig-zag index
     int posInOutput = 0;
 
+    // if (seqInd == 0) {
+    //     printf("ImageDataLength=%d, start=%d, end=%d\n", imageDataLength, start, end);
+    // }
+
     // Load the state from the previous sequence if overflow is true
     if (overflow) {
         p = sInfo[(seqInd - 1) * 4 + 0];
-        n = sInfo[(seqInd - 1) * 4 + 1];
         c = sInfo[(seqInd - 1) * 4 + 2];
         z = sInfo[(seqInd - 1) * 4 + 3];
-    }
 
+        // if (seqInd == 0) {
+        //     printf("[seqInd=%d] Loaded overflow state: p=%d, n=%d, c=%d, z=%d\n",
+        //            seqInd, p, n, c, z);
+        // }
+    }
     // Decode symbols in the subsequence
     while (p < end && p < imageDataLength) {
-        int code = 0, length = 0, runLength = 0;
+        int code = 1, codeLength = 1;
 
         // Select Huffman table based on the current component and zig-zag index
         int dcOffset = (c != 0) * 256;
         int acOffset = (z != 0) * 512;
-        match_huffman_code(imageData, p, hfCodes + dcOffset + acOffset, hfLengths + dcOffset + acOffset, code, length);
-        p += length;
+
+        match_huffman_code(imageData, p, hfCodes + dcOffset + acOffset, hfLengths + dcOffset + acOffset, code, codeLength);
+
+        p += codeLength;
+        
+        if (code != 0) {
+            int leadingZeros = 0;
+            // Handle Run-Length Encoding (leading zeros)
+            if (code > 15 && z > 0) {
+                leadingZeros = code >> 4;
+                code = code & 0x0F; // Extract magnitude length
+
+                // if (seqInd == 0) {
+                //     printf("[seqInd=%d] Run-Length Encoding: leadingZeros=%d, n=%d, z=%d\n",
+                //         seqInd, leadingZeros, n, z);
+                // }
+            }
+            int bits = getNBits(imageData, p, code);
+            if (write) {
+                int16_t decoded = decodeNumber(code, bits);
+                outBuffer[posInOutput] = decoded;
+            }
+
+            n += leadingZeros + 1;
+            z += leadingZeros + 1;
+            posInOutput += leadingZeros + 1;
+        }
 
         // Handle End of Block (EOB) or block completion
         if (code == 0 || z >= 64) {
-            z = 0;               // Reset zig-zag index
-            c = (c + 1) % 3;     // Move to the next colour component
-            n += 1;              // Increment number of decoded symbols
-            continue;
+            n += (code == 0) * (63 - z);  // Increment number of decoded symbols
+            z = 0;                        // Reset zig-zag index
+            c = (c + 1) % 3;              // Move to the next colour component
+
+            // if (seqInd == 0) {
+            //     printf("[seqInd=%d] End of Block or Block Complete: code=%d, z=%d, c=%d\n",
+            //            seqInd, code, z, c);
+            // }
         }
 
-        // Handle Run-Length Encoding (leading zeros)
-        if (code > 15 && z > 0) {
-            int leadingZeros = code >> 4;
-            n += leadingZeros;
-            z += leadingZeros;
-            posInOutput += leadingZeros;
-            code = code & 0x0F; // Extract magnitude length
-        }
+        // if (threadIdx.x == 20) {
+        //     printf("[seqInd=%d] Finished iter: p=%d, n=%d, c=%d, z=%d, end = %d\n",
+        //        seqInd, p, n, c, z, end);
+        // }
 
-        // Decode magnitude and write to output buffer
-        if (write) {
-            int bits = getNBits(imageData, p, code);
-            int16_t decoded = decodeNumber(code, bits);
-            outBuffer[posInOutput] = decoded;
-        }
-
-        n++; z++; posInOutput++;
+        // if (p >= end) {
+        //     printf("Thread Finished: %d\n", threadIdx.x);
+        // }
     }
+
+    // if (threadIdx.x == 0) {
+    //     printf("[seqInd=%d] Finished: p=%d, n=%d, c=%d, z=%d, end = %d\n",
+    //            seqInd, p, n, c, z, end);
+    // }
+
+    // printf("Thread Finished: %d\n", threadIdx.x);
+
     returnState[0] = p;
     returnState[1] = n;
     returnState[2] = c;
@@ -149,16 +236,9 @@ __device__ bool isSynchronized(int* returnState, int* storedState) {
 }
 
 __device__ void parallelHuffManDecode(
-    uint8_t* imageData,        // Compressed bitstream for a single image
-    int imageDataLength,       // Length of the compressed bitstream (in bits)
-    int16_t* outBuffer,        // Output buffer for decoded coefficients
-    uint16_t* hfCodes,         // Huffman codes (DC/AC tables)
-    int* hfLengths,            // Huffman lengths (DC/AC tables)
-    int width,                 // Width of the image
-    int height,                // Height of the image
-    int blockSize              // Number of threads in the block
-) {
-    extern __shared__ int sInfo[]; // Shared memory for synchronization state (32 * 4 integers)
+    uint8_t* imageData, int imageDataLength, int16_t* outBuffer, 
+    uint16_t* hfCodes, int* hfLengths, int width, int height, 
+    int blockSize, int* sInfo) {
 
     int threadId = threadIdx.x; // Thread within the block
 
@@ -167,39 +247,78 @@ __device__ void parallelHuffManDecode(
     int start = threadId * segmentSize;
     int end = min(start + segmentSize, imageDataLength);
 
+    if (threadId == 0) {
+        printf("started decoding\n");
+    }
+
     // Decode the segment assigned to this thread
     int returnState[4]; // Array to hold decoding state [p, n, c, z]
-    decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+    decodeSequence(threadId, start, end, false, false, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
 
+    if (threadId == 0) {
+        printf("finished decoding\n");
+    }
+    //__syncthreads();
     // Store the state in shared memory for synchronisation
     sInfo[threadId * 4 + 0] = returnState[0]; // Bit offset
     sInfo[threadId * 4 + 1] = returnState[1]; // Symbols decoded
     sInfo[threadId * 4 + 2] = returnState[2]; // Component (Y/Cb/Cr)
     sInfo[threadId * 4 + 3] = returnState[3]; // Zig-zag index
 
+    if (threadId == 0) {
+        printf("waiting for sync\n");
+    }
     __syncthreads();
 
     // Synchronisation with the next segment (inter-segment sync only)
     int seqInd = threadId + 1; // Check next segment
-    while (seqInd < 32 && !isSynchronized(returnState, &sInfo[seqInd * 4])) {
-        decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+    bool isSynced = false;
+    for (int i = 0; i < blockSize; i++) {
+        if (!isSynced) {
+            start = seqInd * segmentSize;
+            end = min(start + segmentSize, imageDataLength);
+            // Decode the current sequence
+            decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
 
-        // Update shared memory with new state
-        sInfo[seqInd * 4 + 0] = returnState[0];
-        sInfo[seqInd * 4 + 1] = returnState[1];
-        sInfo[seqInd * 4 + 2] = returnState[2];
-        sInfo[seqInd * 4 + 3] = returnState[3];
+            // Check if the state is synchronized
+            isSynced = isSynchronized(returnState, &sInfo[seqInd * 4]);
 
+            // Print the current sequence index and returnState for debugging
+            if (threadId == 0) {
+                printf("Thread: %d, Sequence: %d\n", threadId, seqInd);
+                printf("ReturnState: [p: %d, n: %d, c: %d, z: %d]\n", returnState[0], returnState[1], returnState[2], returnState[3]);
+
+                printf("sInfo:\n");
+                for (int i = 0; i < blockSize; i++) {
+                    printf("  sInfo[%d]: [p: %d, n: %d, c: %d, z: %d]\n",
+                        i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
+                }
+            }
+
+            // Update shared memory or global memory with the new state
+            sInfo[seqInd * 4 + 0] = returnState[0]; // Bit offset
+            sInfo[seqInd * 4 + 1] = returnState[1]; // Symbols decoded
+            sInfo[seqInd * 4 + 2] = returnState[2]; // Current component
+            sInfo[seqInd * 4 + 3] = returnState[3]; // Zigzag index
+
+            seqInd++;
+        }
         __syncthreads();
-        seqInd++;
     }
 
     __syncthreads();
-
     // Perform exclusive prefix sum to calculate offsets
     exclusivePrefixSum(sInfo, blockDim.x);
     if (threadId == 0) {
         sInfo[1] = 0; // First `n` value is zero for prefix sum
+    }
+
+    __syncthreads();
+
+    printf("sInfo:\n");
+    for (int i = 0; i < blockSize; i++) {
+        printf("  sInfo[%d]: [p: %d, n: %d, c: %d, z: %d]\n",
+            i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
     }
 
     // Re-decode with corrected offsets
@@ -330,7 +449,9 @@ void checkCudaError(cudaError_t err, const char* msg) {
 }
 
 /* Function to allocate the GPU space. */
-void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height, int*& zigzagLocations) {
+void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees,
+              int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height,
+              int*& zigzagLocations, int*& sInfo, int maxThreads) {
 
     const size_t codeSize = 256 * sizeof(uint16_t);
     const size_t lengthSize = 256 * sizeof(int);
@@ -357,10 +478,12 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
     checkCudaError(cudaMalloc((void**)&yCrCbChannels, imageSize * 3), "Failed to allocate device memory for one yCrCb channel.");
     checkCudaError(cudaMalloc((void**)&rgbChannels, imageSize * 3), "Failed to allocate device memory for one rgb channel.");
     checkCudaError(cudaMalloc((void**)&outputChannels, imageSize * 3), "Failed to allocate device memory for one output channel.");
-   
+
+    // Allocate memory for sInfo
+    checkCudaError(cudaMalloc((void**)&sInfo, 4 * maxThreads * sizeof(int)), "Failed to allocate memory for sInfo.");
 }
 
-void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& imageDataLegnth, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
+void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& imageDataLength, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
 
     fs::path file_path(imagePath);
     std::string filename = file_path.filename().string();
@@ -370,7 +493,7 @@ void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, 
 
     uint16_t tableSize = 0;
     uint8_t header = 0;
-    int imageDataLength = 0;
+    imageDataLength = 0;
 
     // Using the Stream class for reading bytes.
     Stream stream(bytes);
@@ -470,22 +593,6 @@ void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, 
             break;
         }
     } 
-}
-
-__device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length) {
-    unsigned int extracted_bits = getNBits(stream, bit_offset, 16);
-    // Compare against Huffman table
-    for (int i = 0; i < 256; ++i) {
-        if (huff_bits[i] > 0 && huff_bits[i] <= 16) { // Valid bit length
-            unsigned int mask = (1 << huff_bits[i]) - 1;
-            if ((extracted_bits >> (16 - huff_bits[i]) & mask) == huff_codes[i]) {
-                code = i;
-                length = huff_bits[i];
-                return i;
-            }
-        }
-    }
-    return -1;
 }
 
 __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
@@ -591,25 +698,42 @@ __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChan
     }
 }
 
-__global__ void decodeKernel(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations) {
-    // int imageId = blockIdx.x;
-    int threadId = threadIdx.x;
-    int blockSize = blockDim.x;
-    decodeImage(imageData,
-                imageDataLength,
-                yCrCbChannels,
-                rgbChannels,
-                outputChannels,
-                width,
-                height,
-                quantTables,
-                hfCodes,
-                hfLengths,
-                zigzagLocations,
-                threadId, blockSize);
-}
+__global__ void decodeKernel(
+    uint8_t* imageData,
+    int imageDataLength,
+    int16_t* yCrCbChannels,
+    int16_t* rgbChannels,
+    int16_t* outputChannels,
+    int width,
+    int height,
+    uint8_t* quantTables,
+    uint16_t* hfCodes,
+    int* hfLengths,
+    int* zigzagLocations,
+    int* sInfo) // Pass global memory for sInfo
+{
+    int threadId = threadIdx.x;  // Thread ID within the block
+    int blockSize = blockDim.x;  // Total number of threads in the block
 
-__device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
+    // Call decodeImage with all necessary parameters
+    decodeImage(
+        imageData,
+        imageDataLength,
+        yCrCbChannels,
+        rgbChannels,
+        outputChannels,
+        width,
+        height,
+        quantTables,
+        hfCodes,
+        hfLengths,
+        zigzagLocations,
+        sInfo,        // Pass the global memory pointer for sInfo
+        threadId,
+        blockSize
+    );
+}
+__device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int* sInfo, int threadId, int blockSize) {
 
     __shared__ int zigzagMap[1024];
 
@@ -621,7 +745,7 @@ __device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yC
 
     int totalPixels = width * height;
     
-    parallelHuffManDecode(imageData, imageDataLength, yCrCbChannels, hfCodes, hfLengths);
+    parallelHuffManDecode(imageData, imageDataLength, yCrCbChannels, hfCodes, hfLengths, width, height, blockSize, sInfo);
 
     __syncthreads();
 
@@ -658,10 +782,10 @@ __device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yC
 }
 
 __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
-    // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
     int imageId = blockIdx.x;
     int threadId = threadIdx.x;
     int blockSize = blockDim.x;
+
     decodeImage(deviceStructs[imageId].imageData,
                 deviceStructs[imageId].imageDataLength,
                 deviceStructs[imageId].yCrCbChannels,
@@ -673,7 +797,9 @@ __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
                 deviceStructs[imageId].hfCodes,
                 deviceStructs[imageId].hfLengths,
                 deviceStructs[imageId].zigzagLocations,
-                threadId, blockSize);
+                deviceStructs[imageId].sInfo, // Use sInfo from DeviceData
+                threadId,
+                blockSize);
 }
 
 void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {

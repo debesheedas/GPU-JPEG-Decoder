@@ -24,17 +24,16 @@ int main(int argc, char* argv[]) {
 
     uint8_t* imageData;
     int imageDataLength;
+    int* sInfo;
     int width = 0;
     int height = 0;
     std::unordered_map<int, HuffmanTree*> huffmanTrees;
 
     extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
-    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
-
-    nvtxRangePush("Kernel Execution: decodeKernel");
-    decodeKernel<<<1, 1024>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
+    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 32);
+    
+    decodeKernel<<<1, 32>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
     cudaDeviceSynchronize();
-    nvtxRangePop();
 
     write(outputChannels, width, height, filename);
     clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees);
