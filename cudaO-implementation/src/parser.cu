@@ -1,5 +1,204 @@
 #include "parser.h"
 
+
+
+__device__ void exclusivePrefixSum(int* sInfo, int totalSegments) {
+    extern __shared__ int temp[]; // Shared memory for scan
+
+    int threadId = threadIdx.x;
+
+    if (threadId >= totalSegments) return;
+
+    // Load the `n` values into shared memory
+    temp[threadId] = (threadId < totalSegments) ? sInfo[threadId * 4 + 1] : 0;
+    __syncthreads();
+
+    // Perform inclusive scan in shared memory
+    for (int stride = 1; stride < blockDim.x; stride *= 2) {
+        int value = 0;
+        if (threadId >= stride) {
+            value = temp[threadId - stride];
+        }
+        __syncthreads();
+        temp[threadId] += value;
+        __syncthreads();
+    }
+
+    // Convert to exclusive scan
+    if (threadId == 0) {
+        temp[0] = 0; // First element is 0 for exclusive scan
+    } else {
+        int tempVal = temp[threadId];
+        __syncthreads();
+        temp[threadId] = tempVal;
+    }
+
+    // Write results back to global memory
+    if (threadId < totalSegments) {
+        sInfo[threadId * 4 + 1] = temp[threadId];
+    }
+}
+
+__device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
+                        int& oldCoeff, uint16_t* dcHfcodes, int* dcHflengths, uint16_t* acHfcodes, int* acHflengths) {
+    int code = 0;
+    int code_length = 0;
+    match_huffman_code(imageData, bitOffset, dcHfcodes, dcHflengths, code, code_length);
+    // printf("dc code %d:\n", code);
+    bitOffset += code_length;
+    uint16_t bits = getNBits(imageData, bitOffset, code);
+
+    int16_t decoded = decodeNumber(code, bits); 
+    int16_t dcCoeff = decoded + oldCoeff;
+    // printf("dc coeff %d:\n", dcCoeff);
+    outBuffer[0] = dcCoeff;
+
+    int length = 1;
+    while (length < 64) {
+        match_huffman_code(imageData, bitOffset, acHfcodes, acHflengths, code, code_length);
+        // printf("code %d:\n", code);
+        bitOffset += code_length;
+        if (code == 0) {
+            break;
+        }
+        // The first part of the AC key length is the number of leading zeros
+        if (code > 15) {
+            length += (code >> 4);
+            code = code & 0x0f;
+        }
+        bits = getNBits(imageData, bitOffset, code);
+        if (length < 64) {
+            decoded = decodeNumber(code, bits);
+            // printf("ac coeff %d:\n", decoded);
+            outBuffer[length] = decoded;
+            length++;
+        }
+    }
+    // Update oldCoeff for the next MCU
+    oldCoeff = dcCoeff;
+    return bitOffset;
+}
+
+
+__device__ void decodeSequence(
+    int seqInd, int start, int end, bool overflow, bool write,
+    int16_t* outBuffer, int* sInfo, uint8_t* imageData,
+    int imageDataLength, uint16_t* hfCodes, int* hfLengths, int* returnState) {
+
+    // Decode state variables
+    int p = start; // Start bit offset for the subsequence
+    int n = 0;     // Number of decoded symbols
+    int c = 0;     // Current component (Y, assuming)
+    int z = 0;     // Zig-zag index
+    int posInOutput = 0;
+
+    // Load the state from the previous sequence if overflow is true
+    if (overflow) {
+        p = sInfo[(seqInd - 1) * 4 + 0];
+        n = sInfo[(seqInd - 1) * 4 + 1];
+        c = sInfo[(seqInd - 1) * 4 + 2];
+        z = sInfo[(seqInd - 1) * 4 + 3];
+    }
+
+    // Decode symbols in the subsequence
+    while (p < end && p < imageDataLength) {
+        int code = 0, length = 0, runLength = 0;
+
+        // Select Huffman table based on the current component and zig-zag index
+        int dcOffset = (c != 0) * 256;
+        int acOffset = (z != 0) * 512;
+        match_huffman_code(imageData, p, hfCodes + dcOffset + acOffset, hfLengths + dcOffset + acOffset, code, length);
+        p += length;
+
+        // Handle End of Block (EOB) or block completion
+        if (code == 0 || z >= 64) {
+            z = 0;               // Reset zig-zag index
+            c = (c + 1) % 3;     // Move to the next colour component
+            n += 1;              // Increment number of decoded symbols
+            continue;
+        }
+
+        // Handle Run-Length Encoding (leading zeros)
+        if (code > 15 && z > 0) {
+            int leadingZeros = code >> 4;
+            n += leadingZeros;
+            z += leadingZeros;
+            posInOutput += leadingZeros;
+            code = code & 0x0F; // Extract magnitude length
+        }
+
+        // Decode magnitude and write to output buffer
+        if (write) {
+            int bits = getNBits(imageData, p, code);
+            int16_t decoded = decodeNumber(code, bits);
+            outBuffer[posInOutput] = decoded;
+        }
+
+        n++; z++; posInOutput++;
+    }
+    returnState[0] = p;
+    returnState[1] = n;
+    returnState[2] = c;
+    returnState[3] = z;
+}
+
+__device__ bool isSynchronized(int* returnState, int* storedState) {
+    // synchronisation occurs when all key state variables match
+    return storedState[0] == returnState[0] && // bit offset
+           storedState[2] == returnState[2] && // component
+           storedState[3] == returnState[3];   // zig-zag index
+}
+
+__device__ void syncDecoders(
+    uint8_t* imageData, int16_t* outBuffer, int imageDataLength,
+    uint16_t* hfCodes, int* hfLengths, int segmentSize, int totalSegments) {
+    
+    extern __shared__ int sInfo[]; // Shared memory for synchronization state
+
+    int threadId = threadIdx.x; 
+
+    int seqInd = threadId;
+
+    int start = seqInd * segmentSize;
+    int end = min(start + segmentSize, imageDataLength);
+
+    // Decode the sequence assigned to this thread
+    int returnState[4];
+    decodeSequence(seqInd, start, end, false, true, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+
+    // Store the state in shared memory
+    sInfo[seqInd * 4 + 0] = returnState[0]; // Bit offset
+    sInfo[seqInd * 4 + 1] = returnState[1]; // Symbols decoded
+    sInfo[seqInd * 4 + 2] = returnState[2]; // Component
+    sInfo[seqInd * 4 + 3] = returnState[3]; // Zig-zag index
+
+    __syncthreads();
+
+    // Perform overflow decoding if needed
+    ++seqInd; // Move to the next subsequence
+    while (seqInd < totalSegments && !isSynchronized(returnState, &sInfo[seqInd * 4])) {
+        decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+
+        // Update shared sInfo with the new return state
+        sInfo[seqInd * 4 + 0] = returnState[0];
+        sInfo[seqInd * 4 + 1] = returnState[1];
+        sInfo[seqInd * 4 + 2] = returnState[2];
+        sInfo[seqInd * 4 + 3] = returnState[3];
+
+        __syncthreads();
+
+        ++seqInd;
+    }
+
+    __syncthreads();
+
+    // Call the exclusive prefix sum
+    exclusivePrefixSum(sInfo, totalSegments);
+}
+
+
+
+
 __device__ int16_t clip(int16_t value) {
     value = max(-256, value);
     value = min(255, value);
@@ -141,7 +340,7 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
    
 }
 
-void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
+void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& imageDataLegnth, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
 
     fs::path file_path(imagePath);
     std::string filename = file_path.filename().string();
