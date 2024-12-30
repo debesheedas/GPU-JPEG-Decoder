@@ -18,76 +18,34 @@ __device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huf
     return -1;
 }
 
-// __device__ void exclusivePrefixSum(int* sInfo, int totalSegments) {
-//     extern __shared__ int temp[]; // Shared memory for scan
+__device__ void koggeStonePrefixSumRange(int *arr, int n, int i, int k, int j) {
+    int tid = threadIdx.x;
+    int blockSize = blockDim.x;
+    int ind = tid * k + i;
+    int numSegments = (((j - i) / k) + blockSize - 2) / (blockSize - 1);
 
-//     int threadId = threadIdx.x;
+    int start = i;
+    int end = min(start + blockSize * k, j);
 
-//     if (threadId >= totalSegments) return;
-
-//     // Load the `n` values into shared memory
-//     temp[threadId] = sInfo[threadId * 4 + 1];
-//     __syncthreads();
-
-//     // Perform inclusive scan in shared memory
-//     for (int stride = 1; stride < blockDim.x; stride *= 2) {
-//         int value = 0;
-//         if (threadId >= stride) {
-//             value = temp[threadId - stride];
-//         }
-//         __syncthreads();
-//         temp[threadId] += value;
-//         __syncthreads();
-//     }
-
-//     // Convert to exclusive scan
-//     if (threadId == 0) {
-//         temp[0] = 0; // First element is 0 for exclusive scan
-//     } else {
-//         int tempVal = temp[threadId];
-//         __syncthreads();
-//         temp[threadId] = tempVal;
-//     }
-
-//     // Write results back to global memory
-//     if (threadId < totalSegments) {
-//         sInfo[threadId * 4 + 1] = temp[threadId];
-//     }
-// }
-
-
-__device__ void exclusivePrefixSum(int* sInfo, int totalSegments) {
-    int threadId = threadIdx.x;
-
-    if (threadId >= totalSegments) return;
-
-    // Perform the prefix sum iteratively
-    for (int stride = 1; stride < totalSegments; stride *= 2) {
-        int temp = 0;
-
-        // Load the value from the previous stride
-        if (threadId >= stride) {
-            temp = sInfo[(threadId - stride) * 4 + 1];
+    for (int seg = 0; seg < numSegments; seg++) {
+        if (ind >= start && ind < end) {
+            for (int offset = k; offset < end - start; offset *= 2) {
+                int temp = 0;
+                if (ind >= start + offset) {
+                    temp = arr[ind - offset];
+                }
+                __syncthreads();
+                if (ind < n) {
+                    arr[ind] += temp;
+                }
+                __syncthreads();
+            }
         }
-        __syncthreads();
 
-        // Update the current value in sInfo
-        if (threadId < totalSegments) {
-            sInfo[threadId * 4 + 1] += temp;
-        }
-        __syncthreads();
+        ind += (blockSize - 1) * k;
+        start += (blockSize - 1) * k;
+        end = min(start + blockSize * k, j);
     }
-
-    // Convert to exclusive prefix sum
-    if (threadId == 0) {
-        sInfo[0 * 4 + 1] = 0; // First element is 0 for exclusive prefix sum
-    } else {
-        __syncthreads();
-        if (threadId < totalSegments) {
-            sInfo[threadId * 4 + 1] = sInfo[(threadId - 1) * 4 + 1];
-        }
-    }
-    __syncthreads();
 }
 
 __device__ void parallelDifferenceDecodeDC(
@@ -131,8 +89,7 @@ __device__ void parallelDifferenceDecodeDC(
 
 __device__ void decodeSequence(
     int seqInd, int start, int end, bool overflow, bool write,
-    int16_t* outBuffer, int* sInfo, uint8_t* imageData,
-    int imageDataLength, uint16_t* hfCodes, int* hfLengths, int* returnState) {
+    int16_t* outBuffer, int* sInfo, uint8_t* imageData, uint16_t* hfCodes, int* hfLengths, int* returnState) {
 
     //printf("Thread Starting: %d\n", threadIdx.x);
 
@@ -143,23 +100,18 @@ __device__ void decodeSequence(
     int z = 0;     // Zig-zag index
     int posInOutput = 0;
 
-    // if (seqInd == 0) {
-    //     printf("ImageDataLength=%d, start=%d, end=%d\n", imageDataLength, start, end);
-    // }
-
     // Load the state from the previous sequence if overflow is true
+
+    if (write) {
+        posInOutput = (seqInd == 0) ? 0 : sInfo[(seqInd - 1) * 4 + 1];
+    }
     if (overflow) {
         p = sInfo[(seqInd - 1) * 4 + 0];
         c = sInfo[(seqInd - 1) * 4 + 2];
         z = sInfo[(seqInd - 1) * 4 + 3];
-
-        // if (seqInd == 0) {
-        //     printf("[seqInd=%d] Loaded overflow state: p=%d, n=%d, c=%d, z=%d\n",
-        //            seqInd, p, n, c, z);
-        // }
     }
     // Decode symbols in the subsequence
-    while (p < end && p < imageDataLength) {
+    while (p < end) {
         int code = 1, codeLength = 1;
 
         // Select Huffman table based on the current component and zig-zag index
@@ -169,58 +121,32 @@ __device__ void decodeSequence(
         match_huffman_code(imageData, p, hfCodes + dcOffset + acOffset, hfLengths + dcOffset + acOffset, code, codeLength);
 
         p += codeLength;
-        
-        if (code != 0) {
-            int leadingZeros = 0;
-            // Handle Run-Length Encoding (leading zeros)
-            if (code > 15 && z > 0) {
-                leadingZeros = code >> 4;
-                code = code & 0x0F; // Extract magnitude length
 
-                // if (seqInd == 0) {
-                //     printf("[seqInd=%d] Run-Length Encoding: leadingZeros=%d, n=%d, z=%d\n",
-                //         seqInd, leadingZeros, n, z);
-                // }
-            }
-            int bits = getNBits(imageData, p, code);
-            if (write) {
-                int16_t decoded = decodeNumber(code, bits);
-                outBuffer[posInOutput] = decoded;
-            }
-
-            n += leadingZeros + 1;
-            z += leadingZeros + 1;
-            posInOutput += leadingZeros + 1;
+        int leadingZeros = 0;
+        if (code == 0 && z != 0) {
+            leadingZeros = 63 - z;
+        }
+        else if (code > 15 && z != 0) {
+            leadingZeros = code >> 4;
+            code = code & 0x0F;
         }
 
-        // Handle End of Block (EOB) or block completion
-        if (code == 0 || z >= 64) {
-            n += (code == 0) * (63 - z);  // Increment number of decoded symbols
-            z = 0;                        // Reset zig-zag index
-            c = (c + 1) % 3;              // Move to the next colour component
-
-            // if (seqInd == 0) {
-            //     printf("[seqInd=%d] End of Block or Block Complete: code=%d, z=%d, c=%d\n",
-            //            seqInd, code, z, c);
-            // }
+        uint16_t bits = getNBits(imageData, p, code);
+        if (write) {
+            int16_t decoded = decodeNumber(code, bits);
+            outBuffer[posInOutput] = decoded;
         }
 
-        // if (threadIdx.x == 20) {
-        //     printf("[seqInd=%d] Finished iter: p=%d, n=%d, c=%d, z=%d, end = %d\n",
-        //        seqInd, p, n, c, z, end);
-        // }
+        // increment the values
+        n += leadingZeros + 1;
+        z += leadingZeros + 1;
+        posInOutput += leadingZeros + 1;
 
-        // if (p >= end) {
-        //     printf("Thread Finished: %d\n", threadIdx.x);
-        // }
+        if (z >= 64) {
+            z = 0;
+            c = (c + 1) % 3;
+        }
     }
-
-    // if (threadIdx.x == 0) {
-    //     printf("[seqInd=%d] Finished: p=%d, n=%d, c=%d, z=%d, end = %d\n",
-    //            seqInd, p, n, c, z, end);
-    // }
-
-    // printf("Thread Finished: %d\n", threadIdx.x);
 
     returnState[0] = p;
     returnState[1] = n;
@@ -253,7 +179,7 @@ __device__ void parallelHuffManDecode(
 
     // Decode the segment assigned to this thread
     int returnState[4]; // Array to hold decoding state [p, n, c, z]
-    decodeSequence(threadId, start, end, false, false, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+    decodeSequence(threadId, start, end, false, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
 
     if (threadId == 0) {
         printf("finished decoding\n");
@@ -278,7 +204,7 @@ __device__ void parallelHuffManDecode(
             start = seqInd * segmentSize;
             end = min(start + segmentSize, imageDataLength);
             // Decode the current sequence
-            decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+            decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
 
             // Check if the state is synchronized
             isSynced = isSynchronized(returnState, &sInfo[seqInd * 4]);
@@ -308,32 +234,31 @@ __device__ void parallelHuffManDecode(
 
     __syncthreads();
     // Perform exclusive prefix sum to calculate offsets
-    exclusivePrefixSum(sInfo, blockDim.x);
-    if (threadId == 0) {
-        sInfo[1] = 0; // First `n` value is zero for prefix sum
-    }
+
+    printf("doing prefix sum\n");
+    koggeStonePrefixSumRange(sInfo, 4 * blockSize, 1, 4, 4 * blockSize);
 
     __syncthreads();
-
-    printf("sInfo:\n");
-    for (int i = 0; i < blockSize; i++) {
-        printf("  sInfo[%d]: [p: %d, n: %d, c: %d, z: %d]\n",
-            i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
+    if (threadId == 0) {
+        printf("sInfo:\n");
+        for (int i = 0; i < blockSize; i++) {
+            printf("  sInfo[%d]: [p: %d, n: %d, c: %d, z: %d]\n",
+                i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
+        }
     }
-
     // Re-decode with corrected offsets
     if (threadId == 0) {
-        decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+        decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
     } else {
-        decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, imageDataLength, hfCodes, hfLengths, returnState);
+        decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
     }
 
-    __syncthreads();
-    int totalBlocks = (width * height) / 64; // Total number of 8x8 blocks in the image
-    for (int c = 0; c < 3; ++c) { // Process each channel (Y, Cb, Cr)
-        parallelDifferenceDecodeDC(outBuffer + c * totalBlocks * 64, totalBlocks, threadId, blockSize);
-    }
-    __syncthreads();
+    // __syncthreads();
+    // int totalBlocks = (width * height) / 64; // Total number of 8x8 blocks in the image
+    // for (int c = 0; c < 3; ++c) { // Process each channel (Y, Cb, Cr)
+    //     parallelDifferenceDecodeDC(outBuffer + c * totalBlocks * 64, totalBlocks, threadId, blockSize);
+    // }
+    // __syncthreads();
 }
 
 
@@ -483,7 +408,7 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
     checkCudaError(cudaMalloc((void**)&sInfo, 4 * maxThreads * sizeof(int)), "Failed to allocate memory for sInfo.");
 }
 
-void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& imageDataLength, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
+void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& numBits, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
 
     fs::path file_path(imagePath);
     std::string filename = file_path.filename().string();
@@ -493,7 +418,7 @@ void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, 
 
     uint16_t tableSize = 0;
     uint8_t header = 0;
-    imageDataLength = 0;
+    int imageDataLength = 0;
 
     // Using the Stream class for reading bytes.
     Stream stream(bytes);
@@ -593,6 +518,7 @@ void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, 
             break;
         }
     } 
+    numBits = imageDataLength * 8;
 }
 
 __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
