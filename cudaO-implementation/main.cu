@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
     allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
 
     nvtxRangePush("Kernel Execution: decodeKernel");
-    decodeKernel<<<1, 32>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
+    decodeKernel<<<1, 64>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
     cudaError_t lastError = cudaGetLastError();
     if (lastError != cudaSuccess) {
         std::cerr << "Last CUDA error: " << cudaGetErrorString(lastError) << std::endl;
