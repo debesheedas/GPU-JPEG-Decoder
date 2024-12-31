@@ -48,6 +48,36 @@ __device__ void koggeStonePrefixSumRange(int *arr, int n, int i, int k, int j) {
     }
 }
 
+__device__ void koggeStonePrefixSumRange16(int16_t *arr, int n, int i, int k, int j) {
+    int tid = threadIdx.x;
+    int blockSize = blockDim.x;
+    int ind = tid * k + i;
+    int numSegments = (((j - i) / k) + blockSize - 2) / (blockSize - 1);
+
+    int start = i;
+    int end = min(start + blockSize * k, j);
+
+    for (int seg = 0; seg < numSegments; seg++) {
+        if (ind >= start && ind < end) {
+            for (int offset = k; offset < end - start; offset *= 2) {
+                int16_t temp = 0;
+                if (ind >= start + offset) {
+                    temp = arr[ind - offset];
+                }
+                __syncthreads();
+                if (ind < n) {
+                    arr[ind] += temp;
+                }
+                __syncthreads();
+            }
+        }
+
+        ind += (blockSize - 1) * k;
+        start += (blockSize - 1) * k;
+        end = min(start + blockSize * k, j);
+    }
+}
+
 __device__ void parallelDifferenceDecodeDC(
     int16_t* outBuffer, int totalBlocks, int threadId, int blockSize) {
     extern __shared__ int16_t sharedDC[]; // Shared memory for DC coefficients
@@ -246,19 +276,32 @@ __device__ void parallelHuffManDecode(
                 i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
         }
     }
+    __syncthreads();
     // Re-decode with corrected offsets
     if (threadId == 0) {
         decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
     } else {
         decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
     }
-
-    // __syncthreads();
-    // int totalBlocks = (width * height) / 64; // Total number of 8x8 blocks in the image
+    __syncthreads();
+    int totalPixels = (width * height);
+    // printf("doing prefix sum2\n");
     // for (int c = 0; c < 3; ++c) { // Process each channel (Y, Cb, Cr)
-    //     parallelDifferenceDecodeDC(outBuffer + c * totalBlocks * 64, totalBlocks, threadId, blockSize);
+    // //     parallelDifferenceDecodeDC(outBuffer + c * totalBlocks * 64, totalBlocks, threadId, blockSize);
+    //     koggeStonePrefixSumRange16(outBuffer, 3 * totalPixels, c * totalPixels, 64, (c+1) * totalPixels);
     // }
-    // __syncthreads();
+
+    if (threadId == 0) {
+        for (int c = 0; c < 3; ++c) {
+            int16_t dcCoeff = 0;
+            int ind = c * totalPixels;
+            while (ind < totalPixels) {
+                dcCoeff += outBuffer[ind];
+                outBuffer[ind] = dcCoeff;
+                ind += 64;
+            }
+        }
+    }
 }
 
 
