@@ -119,7 +119,7 @@ __device__ void parallelDifferenceDecodeDC(
 
 __device__ void decodeSequence(
     int seqInd, int start, int end, bool overflow, bool write,
-    int16_t* outBuffer, int* sInfo, uint8_t* imageData, uint16_t* hfCodes, int* hfLengths, int* returnState) {
+    int16_t* outBuffer, int* sInfo, uint8_t* imageData, uint16_t* hfCodes, int* hfLengths, int* returnState, int width, int height) {
 
     //printf("Thread Starting: %d\n", threadIdx.x);
 
@@ -162,9 +162,11 @@ __device__ void decodeSequence(
         }
 
         uint16_t bits = getNBits(imageData, p, code);
+
         if (write) {
             int16_t decoded = decodeNumber(code, bits);
-            outBuffer[posInOutput] = decoded;
+            int writeInd = c * width * height + (posInOutput / 192) * 64 + (posInOutput % 64); 
+            outBuffer[writeInd] = decoded;
         }
 
         // increment the values
@@ -209,7 +211,7 @@ __device__ void parallelHuffManDecode(
 
     // Decode the segment assigned to this thread
     int returnState[4]; // Array to hold decoding state [p, n, c, z]
-    decodeSequence(threadId, start, end, false, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
+    decodeSequence(threadId, start, end, false, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, width, height);
 
     if (threadId == 0) {
         printf("finished decoding\n");
@@ -234,7 +236,7 @@ __device__ void parallelHuffManDecode(
             start = seqInd * segmentSize;
             end = min(start + segmentSize, imageDataLength);
             // Decode the current sequence
-            decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
+            decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, width, height);
 
             // Check if the state is synchronized
             isSynced = isSynchronized(returnState, &sInfo[seqInd * 4]);
@@ -279,9 +281,9 @@ __device__ void parallelHuffManDecode(
     __syncthreads();
     // Re-decode with corrected offsets
     if (threadId == 0) {
-        decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
+        decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, width, height);
     } else {
-        decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState);
+        decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, width, height);
     }
     __syncthreads();
     int totalPixels = (width * height);
