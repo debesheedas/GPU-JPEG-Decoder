@@ -51,7 +51,7 @@ __device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yC
 __global__ void decodeKernel(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int* sInfo);
 void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height, int*& zigzagLocations, int*& sInfo, int maxThreads);
 void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& numBits, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees);
-void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees);
+void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int*& sInfo);
 void write(int16_t* outputChannels, int width, int height, std::string filename);
 
 const int zigzagEntries[64] = {

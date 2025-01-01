@@ -75,7 +75,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
         
                 host_data->imagePath = imagePaths[globalIdx];
                 extract(host_data->imagePath, data->quantTables, data->imageData, data->imageDataLength, data->width, data->height, host_data->huffmanTrees);
-                allocate(data->hfCodes, data->hfLengths, host_data->huffmanTrees, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->width, data->height, data->zigzagLocations);
+                allocate(data->hfCodes, data->hfLengths, host_data->huffmanTrees, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->width, data->height, data->zigzagLocations, data->sInfo, threads);
             }
             // Allocate memory for the current batch on the GPU
             cudaMemcpy(deviceStructs, structs, currentBatchSize * sizeof(DeviceData), cudaMemcpyHostToDevice);
@@ -83,11 +83,9 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
             cudaEventCreate(&batchStart);
             cudaEventCreate(&batchStop);
 
-            nvtxRangePushA("BatchDecodeKernel Execution");
             cudaEventRecord(batchStart);
             batchDecodeKernel<<<currentBatchSize, threads>>>(deviceStructs);
             cudaEventRecord(batchStop);
-            nvtxRangePop();  // End NVTX marker
             
             cudaEventSynchronize(batchStop);
             cudaDeviceSynchronize();
@@ -112,7 +110,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 HostData* host_data = &hosts[i];
                 DeviceData* data = &structs[i];
                 // std::cout << host_data->huffmanTrees[0]->codes[0] << std::endl;
-                clean(data->hfCodes, data->hfLengths, data->quantTables, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->zigzagLocations, data->imageData, host_data->huffmanTrees);
+                clean(data->hfCodes, data->hfLengths, data->quantTables, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->zigzagLocations, data->imageData, host_data->huffmanTrees, data->sInfo);
             }
         }
         double seconds = totalKernelTime / 1000.0;
@@ -138,7 +136,8 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
 }
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/cudaO-implementation/benchmark_thoughput/benchmarking_dataset_through";
+    // std::string datasetPath = "/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/cudaO-implementation/benchmark_thoughput/benchmarking_dataset_through";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_through/400x400";
 
     std::vector<std::string> imagePaths = getAllImages(datasetPath);
 

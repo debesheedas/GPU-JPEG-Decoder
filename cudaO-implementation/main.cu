@@ -36,5 +36,5 @@ int main(int argc, char* argv[]) {
     cudaDeviceSynchronize();
 
     write(outputChannels, width, height, filename);
-    clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees);
+    clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees, sInfo);
 }
