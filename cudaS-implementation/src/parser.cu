@@ -529,47 +529,55 @@ __device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t*
 
     __shared__ int16_t sharedMem[256];  // change 32 to number of threads blocksize * 8
 
-    while (pixelIndex * 8 < totalPixels) {  // load memory into shared // channel 1 
-        int start = (pixelIndex / 8) * 64 + (pixelIndex % 8) * 8; 
-
-        for (int i = 0; i < 8; i++) {
-            sharedMem[threadId * 8 + i] = rgbChannels[start + i]; 
-        }
-        idctRow(sharedMem + threadId * 8);
-        for (int i = 0; i < 8; i++) {
-            rgbChannels[start + i] = sharedMem[threadId * 8 + i];
-        }
-        pixelIndex += blockSize;
-    }
-    pixelIndex = threadId;
-
-    while (pixelIndex * 8 < totalPixels) {  // load memory into shared  // channel 2
-        int start = (pixelIndex / 8) * 64 + (pixelIndex % 8) * 8; 
-
-        for (int i = 0; i < 8; i++) {
-            sharedMem[threadId * 8 + i] = rgbChannels[start + totalPixels + i]; 
-        }
-        idctRow(sharedMem + threadId * 8);
-        for (int i = 0; i < 8; i++) {
-            rgbChannels[start + totalPixels + i] = sharedMem[threadId * 8 + i];
-        }
+    while (pixelIndex * 8 < 3 * totalPixels) {     
+        int index = pixelIndex % totalPixels;
+        int start = (index / 8) * 64 + (index % 8) * 8;
+        idctRow(rgbChannels + (pixelIndex / totalPixels) * totalPixels + start);
         pixelIndex += blockSize;
     }
 
-    pixelIndex = threadId;
 
-    while (pixelIndex * 8 < totalPixels) {  // load memory into shared  // channel 3
-        int start = (pixelIndex / 8) * 64 + (pixelIndex % 8) * 8; 
+    // while (pixelIndex * 8 < totalPixels) {  // load memory into shared // channel 1 
+    //     int start = (pixelIndex / 8) * 64 + (pixelIndex % 8) * 8; 
 
-        for (int i = 0; i < 8; i++) {
-            sharedMem[threadId * 8 + i] = rgbChannels[start + 2 * totalPixels + i]; 
-        }
-        idctRow(sharedMem + threadId * 8);
-        for (int i = 0; i < 8; i++) {
-            rgbChannels[start + 2 * totalPixels + i] = sharedMem[threadId * 8 + i];
-        }
-        pixelIndex += blockSize;
-    }
+    //     for (int i = 0; i < 8; i++) {
+    //         sharedMem[threadId * 8 + i] = rgbChannels[start + i]; 
+    //     }
+    //     idctRow(sharedMem + threadId * 8);
+    //     for (int i = 0; i < 8; i++) {
+    //         rgbChannels[start + i] = sharedMem[threadId * 8 + i];
+    //     }
+    //     pixelIndex += blockSize;
+    // }
+    // pixelIndex = threadId;
+
+    // while (pixelIndex * 8 < totalPixels) {  // load memory into shared  // channel 2
+    //     int start = (pixelIndex / 8) * 64 + (pixelIndex % 8) * 8; 
+
+    //     for (int i = 0; i < 8; i++) {
+    //         sharedMem[threadId * 8 + i] = rgbChannels[start + totalPixels + i]; 
+    //     }
+    //     idctRow(sharedMem + threadId * 8);
+    //     for (int i = 0; i < 8; i++) {
+    //         rgbChannels[start + totalPixels + i] = sharedMem[threadId * 8 + i];
+    //     }
+    //     pixelIndex += blockSize;
+    // }
+
+    // pixelIndex = threadId;
+
+    // while (pixelIndex * 8 < totalPixels) {  // load memory into shared  // channel 3
+    //     int start = (pixelIndex / 8) * 64 + (pixelIndex % 8) * 8; 
+
+    //     for (int i = 0; i < 8; i++) {
+    //         sharedMem[threadId * 8 + i] = rgbChannels[start + 2 * totalPixels + i]; 
+    //     }
+    //     idctRow(sharedMem + threadId * 8);
+    //     for (int i = 0; i < 8; i++) {
+    //         rgbChannels[start + 2 * totalPixels + i] = sharedMem[threadId * 8 + i];
+    //     }
+    //     pixelIndex += blockSize;
+    // }
 
     pixelIndex = threadId;
 

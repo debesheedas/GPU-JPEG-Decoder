@@ -30,9 +30,9 @@ int main(int argc, char* argv[]) {
     std::unordered_map<int, HuffmanTree*> huffmanTrees;
 
     extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
-    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 1024);
+    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 32);
     
-    decodeKernel<<<1, 1024>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
+    decodeKernel<<<1, 32>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
     cudaDeviceSynchronize();
 
     write(outputChannels, width, height, filename);
