@@ -123,14 +123,16 @@ __device__ void decodeSequence(
             code = code & 0x0F;
         }
 
-        uint16_t bits = getNBits(imageData, p, code);
-
         if (write) {
+            uint16_t bits = getNBits(imageData, p, code);
             int16_t decoded = decodeNumber(code, bits);
             int writeInd = c * width * height + (posInOutput / 192) * 64 + (posInOutput % 64);
             if (writeInd < (c+1) * width * height) {
                 outBuffer[writeInd] = decoded;
             }
+        }
+        else {
+            p += code;
         }
 
         //increment the values
@@ -192,11 +194,10 @@ __device__ void parallelHuffManDecode(
     // }
     __syncthreads();
 
-    // Synchronisation with the next segment (inter-segment sync only)
-    int seqInd = threadId + 1; // Check next segment
+    int seqInd = threadId + 1; // Overflow to the next segment
     bool isSynced = false;
     for (int i = 0; i < blockSize; i++) {
-        if (!isSynced) {
+        if ((!isSynced) && (seqInd < blockSize)) {
             start = seqInd * segmentSize;
             end = min(start + segmentSize, imageDataLength);
             // Decode the current sequence
@@ -241,15 +242,15 @@ __device__ void parallelHuffManDecode(
         }
     }
     __syncthreads();
-    printf("sInfo after prefix sum\n");
-    if (threadId == 0) {
-        printf("sInfo:\n");
-        for (int i = 0; i < blockSize; i++) {
-            printf("  sInfo[%d]: [p: %d, n: %d, c: %d, z: %d]\n",
-                i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
-        }
-    }
-    __syncthreads();
+    // printf("sInfo after prefix sum\n");
+    // if (threadId == 0) {
+    //     printf("sInfo:\n");
+    //     for (int i = 0; i < blockSize; i++) {
+    //         printf("  sInfo[%d]: [p: %d, n: %d, c: %d, z: %d]\n",
+    //             i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
+    //     }
+    // }
+    // __syncthreads();
     // Re-decode with corrected offsets
 
     start = threadId * segmentSize;
