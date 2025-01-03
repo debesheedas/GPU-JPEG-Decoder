@@ -49,7 +49,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
 
     // Define batch size (adjust based on available memory)
     size_t batchSize = 3000; // Example batch size
-    int threads = 256;
+    int threads = 512;
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
     std::cout<< "num batches " << numBatches << " | numImages " << numImages << std::endl;
     
