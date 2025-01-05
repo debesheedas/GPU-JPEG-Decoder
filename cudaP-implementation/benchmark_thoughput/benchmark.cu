@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <cuda_runtime.h>
 #include <nvtx3/nvToolsExt.h>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaO-implementation/src/parser.h"
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaP-implementation/src/parser.h"
 
 namespace fs = std::filesystem;
 
@@ -20,27 +20,6 @@ std::vector<std::string> getAllImages(const std::string& datasetPath) {
     }
     return imagePaths;
 }
-// __global__ void myKernel(int size) {
-//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (idx < size) {
-//         idx = idx; // Example operation
-//     }
-// }
-// CUDA kernel for parallel image processing (dummy example, replace with actual implementation)
-
-
-// void copyToDevice(HostData* parser, DeviceData* data) {
-//     data->imageData = parser->imageData;
-//     data->yCrCbChannels = parser->yCrCbChannels;
-//     data->outputChannels = parser->outputChannels;
-//     data->zigzagLocations = parser->zigzagLocations;
-//     data->width = parser->width;
-//     data->height = parser->height;
-//     data->rgbChannels = parser->rgbChannels;
-//     data->quantTables = parser->quantTables;
-//     data->hfCodes = parser->hfCodes;
-//     data->hfLengths = parser->hfLengths;
-// }
 
 // Benchmark function for throughput measurement
 void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imagePaths) {
