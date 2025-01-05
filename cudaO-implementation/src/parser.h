@@ -80,4 +80,3 @@ struct ImageChannels {
     std::vector<int16_t>& getG() { return channels[4]; }
     std::vector<int16_t>& getB() { return channels[5]; }
 };
-
