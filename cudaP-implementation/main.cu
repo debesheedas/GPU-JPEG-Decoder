@@ -27,14 +27,16 @@ int main(int argc, char* argv[]) {
     int* sInfo;
     int width = 0;
     int height = 0;
+    int paddedWidth = 0;
+    int paddedHeight = 0;
     std::unordered_map<int, HuffmanTree*> huffmanTrees;
 
-    extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
-    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 32);
+    extract(imagePath, quantTables, imageData, imageDataLength, width, height, paddedWidth, paddedHeight, huffmanTrees);
+    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, paddedWidth, paddedHeight, zigzagLocations, sInfo, 32);
     
-    decodeKernel<<<1, 32>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
+    decodeKernel<<<1, 32>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, paddedWidth, paddedHeight, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
     cudaDeviceSynchronize();
 
-    write(outputChannels, width, height, filename);
+    write(outputChannels, width, height, paddedWidth, paddedHeight, filename);
     clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees, sInfo);
 }

@@ -326,9 +326,7 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
 
     const size_t codeSize = 256 * sizeof(uint16_t);
     const size_t lengthSize = 256 * sizeof(int);
-    int paddedWidth = ((width + 7) / 8) * 8;
-    int paddedHeight = ((height + 7) / 8) * 8;
-    const size_t imageSize = paddedWidth * paddedHeight * sizeof(int16_t);
+    const size_t imageSize = width * height * sizeof(int16_t);
 
     checkCudaError(cudaMalloc((void**)&hfCodes, codeSize * 4), "Failed to allocate device memory for huffman codes.");
     checkCudaError(cudaMalloc((void**)&hfLengths, lengthSize * 4), "Failed to allocate device memory for huffman lengths.");
@@ -356,7 +354,7 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
     checkCudaError(cudaMalloc((void**)&sInfo, 4 * maxThreads * sizeof(int)), "Failed to allocate memory for sInfo.");
 }
 
-void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& numBits, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
+void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& numBits, int& width, int& height, int& paddedWidth, int& paddedHeight, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
 
     fs::path file_path(imagePath);
     std::string filename = file_path.filename().string();
@@ -465,7 +463,9 @@ void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, 
             checkCudaError(cudaMemcpy(imageData, hostImageData.data(), imageDataLength * sizeof(uint8_t), cudaMemcpyHostToDevice),"Failed to copy data to device for image data.");
             break;
         }
-    } 
+    }
+    paddedWidth = ((width + 7) / 8) * 8;
+    paddedHeight = ((height + 7) / 8) * 8;
     numBits = imageDataLength * 8;
 }
 
@@ -541,19 +541,15 @@ __device__ void performZigzagReordering(int16_t* yCrCbChannels, int16_t* rgbChan
 __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChannels,
                                        int totalPixels, int width, int threadId, int blockDimGridDim) {
     for (int i = threadId; i < totalPixels; i += blockDimGridDim) {
-        int blockId = i / 64;
-        int blockRow = blockId / (width / 8);
-        int blockColumn = blockId % (width / 8);
-
-        int rowStart = blockRow * 8;
-        int columnStart = blockColumn * 8;
-
-        int pixelIndexInBlock = i % 64;
-        int rowInBlock = pixelIndexInBlock / 8;
-        int columnInBlock = pixelIndexInBlock % 8;
-
-        int globalRow = rowStart + rowInBlock;
-        int globalColumn = columnStart + columnInBlock;
+        // Compute global row and column directly
+        // Explanation:
+        // - Each block contains 8x8 pixels (64 pixels total).
+        // - i / 64 gives the block ID.
+        // - (i / 64) / (width / 8) computes the block's row index in the grid (each block is 8 rows high).
+        // - (i / 64) % (width / 8) computes the block's column index in the grid (each block is 8 columns wide).
+        // - (i % 64) / 8 gives the row within the block, and (i % 64) % 8 gives the column within the block.
+        int globalRow = ((i / 64) / (width / 8)) * 8 + (i % 64) / 8;
+        int globalColumn = ((i / 64) % (width / 8)) * 8 + (i % 64) % 8;
 
         int actualIndex = globalRow * width + globalColumn;
 
@@ -669,8 +665,8 @@ __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
                 deviceStructs[imageId].yCrCbChannels,
                 deviceStructs[imageId].rgbChannels,
                 deviceStructs[imageId].outputChannels,
-                deviceStructs[imageId].width,
-                deviceStructs[imageId].height,
+                deviceStructs[imageId].paddedWidth,
+                deviceStructs[imageId].paddedHeight,
                 deviceStructs[imageId].quantTables,
                 deviceStructs[imageId].hfCodes,
                 deviceStructs[imageId].hfLengths,
@@ -698,9 +694,7 @@ void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*&
     }
 }
 
-void write(int16_t* outputChannels, int width, int height, std::string filename) {
-    int paddedWidth = ((width + 7) / 8) * 8;
-    int paddedHeight = ((height + 7) / 8) * 8;
+void write(int16_t* outputChannels, int width, int height, int paddedWidth, int paddedHeight, std::string filename) {
     size_t channelSize = paddedWidth * paddedHeight * sizeof(int16_t);
 
     ImageChannels channels(height * width);

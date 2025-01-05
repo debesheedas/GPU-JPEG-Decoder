@@ -33,9 +33,11 @@ struct DeviceData {
     int16_t* rgbChannels;
     int16_t* outputChannels;
     int* zigzagLocations;
-    int* sInfo;                // Add sInfo for synchronisation
-    int width;                 // Image width
-    int height;                // Image height
+    int* sInfo;
+    int width;             
+    int height;
+    int paddedWidth;
+    int paddedHeight;
 };
 
 const std::vector<uint16_t> MARKERS = {0xffd8, 0xffe0, 0xffdb, 0xffc0, 0xffc4, 0xffda};
@@ -50,9 +52,9 @@ __global__ void batchDecodeKernel(DeviceData* deviceStructs);
 __device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int* sInfo, int threadId, int blockSize);
 __global__ void decodeKernel(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int* sInfo);
 void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height, int*& zigzagLocations, int*& sInfo, int maxThreads);
-void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& numBits, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees);
+void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& numBits, int& width, int& height, int& paddedWidth, int& paddedHeight, std::unordered_map<int,HuffmanTree*>& huffmanTrees);
 void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int*& sInfo);
-void write(int16_t* outputChannels, int width, int height, std::string filename);
+void write(int16_t* outputChannels, int width, int height, int paddedWidth, int paddedHeight, std::string filename);
 
 const int zigzagEntries[64] = {
         0, 1, 5, 6, 14, 15, 27, 28,

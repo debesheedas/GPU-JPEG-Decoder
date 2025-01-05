@@ -53,23 +53,25 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
         int* sInfo;
         int width = 0;
         int height = 0;
+        int paddedWidth = 0;
+        int paddedHeight = 0;
         std::unordered_map<int,HuffmanTree*> huffmanTrees;
 
         // Extracting the byte chunks
-        extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
+        extract(imagePath, quantTables, imageData, imageDataLength, width, height, paddedWidth, paddedHeight, huffmanTrees);
         // Allocating memory for the arrays
-        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 32);
+        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, paddedWidth, paddedHeight, zigzagLocations, sInfo, 32);
 
         cudaEventRecord(start);
         
-        decodeKernel<<<1, 1024>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
+        decodeKernel<<<1, 1024>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, paddedWidth, paddedHeight, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
         
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
         
         nvtxRangePop();
 
-        write(outputChannels, width, height, filename);
+        write(outputChannels, width, height, paddedWidth, paddedHeight, filename);
         clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees, sInfo);
 
         float milliseconds = 0;

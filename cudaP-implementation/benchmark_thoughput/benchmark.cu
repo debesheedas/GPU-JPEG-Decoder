@@ -28,7 +28,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
 
     // Define batch size (adjust based on available memory)
     size_t batchSize = 3000; // Example batch size
-    int threads = 256;
+    int threads = 320;
     size_t numBatches = (numImages + batchSize - 1) / batchSize;
     std::cout<< "num batches " << numBatches << " | numImages " << numImages << std::endl;
     
@@ -53,8 +53,8 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 DeviceData* data = &structs[i];
         
                 host_data->imagePath = imagePaths[globalIdx];
-                extract(host_data->imagePath, data->quantTables, data->imageData, data->imageDataLength, data->width, data->height, host_data->huffmanTrees);
-                allocate(data->hfCodes, data->hfLengths, host_data->huffmanTrees, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->width, data->height, data->zigzagLocations, data->sInfo, threads);
+                extract(host_data->imagePath, data->quantTables, data->imageData, data->imageDataLength, data->width, data->height, data->paddedWidth, data->paddedHeight, host_data->huffmanTrees);
+                allocate(data->hfCodes, data->hfLengths, host_data->huffmanTrees, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->paddedWidth, data->paddedHeight, data->zigzagLocations, data->sInfo, threads);
             }
             // Allocate memory for the current batch on the GPU
             cudaMemcpy(deviceStructs, structs, currentBatchSize * sizeof(DeviceData), cudaMemcpyHostToDevice);
