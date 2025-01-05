@@ -684,7 +684,7 @@ __device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yC
     }
 
      __syncthreads();
-    performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
+    performColorConversion(rgbChannels, outputChannels, totalPixels, paddedWidth, threadId, blockSize);
 }
 
 __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
@@ -727,22 +727,26 @@ void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*&
 }
 
 void write(int16_t* outputChannels, int width, int height, std::string filename) {
-    ImageChannels channels(height * width);
     int paddedWidth = ((width + 7) / 8) * 8;
     int paddedHeight = ((height + 7) / 8) * 8;
     size_t channelSize = paddedWidth * paddedHeight * sizeof(int16_t);
+
+    ImageChannels channels(height * width);
 
     std::vector<int16_t> tempChannels(channelSize*3);
     cudaMemcpy(tempChannels.data(), outputChannels, channelSize*3, cudaMemcpyDeviceToHost);
     //cudaMemcpy(channels.getG().data(), outputChannels+width*height, channelSize, cudaMemcpyDeviceToHost);
     //cudaMemcpy(channels.getB().data(), outputChannels+2*width*height, channelSize, cudaMemcpyDeviceToHost);
 
-    for (int row = 0; row < height; row++) {
-        for (int col = 0; col < width; col++) {
-            int i = row * width + col;
-            channels.getR()[i] = tempChannels[3*i];
-            channels.getG()[i] = tempChannels[3*i+1];
-            channels.getB()[i] = tempChannels[3*i+2];
+    for (int row = 0; row < paddedHeight; row++) {
+        for (int col = 0; col < paddedWidth; col++) {
+            if (row < height && col < width) {
+                int i = row * paddedWidth + col;
+                int j = row * width + col;
+                channels.getR()[j] = tempChannels[3*i];
+                channels.getG()[j] = tempChannels[3*i+1];
+                channels.getB()[j] = tempChannels[3*i+2];
+            }
         }
     }
 
