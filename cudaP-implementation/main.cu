@@ -17,6 +17,7 @@ int main(int argc, char* argv[]) {
     uint16_t* hfCodes; 
     int* hfLengths;
     uint8_t* quantTables;
+    int16_t* dcCoeffs;
     int16_t* yCrCbChannels;
     int16_t* rgbChannels;
     int16_t* outputChannels;
@@ -25,16 +26,17 @@ int main(int argc, char* argv[]) {
     uint8_t* imageData;
     int imageDataLength;
     int* sInfo;
+    int* numDecodedCoeffs;
     int width = 0;
     int height = 0;
     std::unordered_map<int, HuffmanTree*> huffmanTrees;
 
     extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
-    allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 32);
+    allocate(hfCodes, hfLengths, huffmanTrees, dcCoeffs, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, numDecodedCoeffs, 1024);
     
-    decodeKernel<<<1, 32>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
+    decodeKernel<<<1, 1024>>>(imageData, imageDataLength, dcCoeffs, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo, numDecodedCoeffs);
     cudaDeviceSynchronize();
 
     write(outputChannels, width, height, filename);
-    clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees, sInfo);
+    clean(hfCodes, hfLengths, quantTables, dcCoeffs, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees, sInfo, numDecodedCoeffs);
 }

@@ -53,15 +53,16 @@ def test_array_equality(implementation_folder, image_path):
     load_and_save_array_image(decoder_output_path, f"decoder_output_{image_name}.jpeg")
 
     assert len(ground_truth) == len(decoder_output)
-    if ground_truth == decoder_output:
+    differences = [(abs(ground_truth[1][i] - decoder_output[1][i]), ground_truth[1][i], decoder_output[1][i]) for i in range(len(ground_truth[1])) if abs(ground_truth[1][i] - decoder_output[1][i]) > 0]
+    if len(differences) == 0:
         print("Congratulations! Output matches ground truth!", image_name)
         return True
+
     else:
-        differences = [(abs(ground_truth[1][i] - decoder_output[1][i]), ground_truth[1][i], decoder_output[1][i]) for i in range(len(ground_truth[1])) if abs(ground_truth[1][i] - decoder_output[1][i]) > TOL]
         abs_diff = [diff[0] for diff in differences]
         print("Max difference:", max(abs_diff))       
         print("Output does not match the ground truth!", image_name)
-    return False
+        return False
 
 if __name__ == '__main__':
     num_args = len(sys.argv) - 1

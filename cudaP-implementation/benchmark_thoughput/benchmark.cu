@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <cuda_runtime.h>
 #include <nvtx3/nvToolsExt.h>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaO-implementation/src/parser.h"
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaP-implementation/src/parser.h"
 
 namespace fs = std::filesystem;
 
@@ -20,27 +20,6 @@ std::vector<std::string> getAllImages(const std::string& datasetPath) {
     }
     return imagePaths;
 }
-// __global__ void myKernel(int size) {
-//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (idx < size) {
-//         idx = idx; // Example operation
-//     }
-// }
-// CUDA kernel for parallel image processing (dummy example, replace with actual implementation)
-
-
-// void copyToDevice(HostData* parser, DeviceData* data) {
-//     data->imageData = parser->imageData;
-//     data->yCrCbChannels = parser->yCrCbChannels;
-//     data->outputChannels = parser->outputChannels;
-//     data->zigzagLocations = parser->zigzagLocations;
-//     data->width = parser->width;
-//     data->height = parser->height;
-//     data->rgbChannels = parser->rgbChannels;
-//     data->quantTables = parser->quantTables;
-//     data->hfCodes = parser->hfCodes;
-//     data->hfLengths = parser->hfLengths;
-// }
 
 // Benchmark function for throughput measurement
 void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imagePaths) {
@@ -75,7 +54,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
         
                 host_data->imagePath = imagePaths[globalIdx];
                 extract(host_data->imagePath, data->quantTables, data->imageData, data->imageDataLength, data->width, data->height, host_data->huffmanTrees);
-                allocate(data->hfCodes, data->hfLengths, host_data->huffmanTrees, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->width, data->height, data->zigzagLocations, data->sInfo, threads);
+                allocate(data->hfCodes, data->hfLengths, host_data->huffmanTrees, data->dcCoeffs, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->width, data->height, data->zigzagLocations, data->sInfo, data->numDecodedCoeffs, threads);
             }
             // Allocate memory for the current batch on the GPU
             cudaMemcpy(deviceStructs, structs, currentBatchSize * sizeof(DeviceData), cudaMemcpyHostToDevice);
@@ -110,7 +89,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
                 HostData* host_data = &hosts[i];
                 DeviceData* data = &structs[i];
                 // std::cout << host_data->huffmanTrees[0]->codes[0] << std::endl;
-                clean(data->hfCodes, data->hfLengths, data->quantTables, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->zigzagLocations, data->imageData, host_data->huffmanTrees, data->sInfo);
+                clean(data->hfCodes, data->hfLengths, data->quantTables, data->dcCoeffs, data->yCrCbChannels, data->rgbChannels, data->outputChannels, data->zigzagLocations, data->imageData, host_data->huffmanTrees, data->sInfo, data->numDecodedCoeffs);
             }
         }
         double seconds = totalKernelTime / 1000.0;
