@@ -49,20 +49,18 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
         int* zigzagLocations;
 
         uint8_t* imageData;
-        int imageDataLength;
-        int* sInfo;
         int width = 0;
         int height = 0;
         std::unordered_map<int,HuffmanTree*> huffmanTrees;
 
         // Extracting the byte chunks
-        extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
+        extract(imagePath, quantTables, imageData, width, height, huffmanTrees);
         // Allocating memory for the arrays
-        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 32);
+        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations);
 
         cudaEventRecord(start);
         
-        decodeKernel<<<1, 1024>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
+        decodeKernel<<<1, 1024>>>(imageData, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations);
         
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
@@ -70,7 +68,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
         nvtxRangePop();
 
         write(outputChannels, width, height, filename);
-        clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees, sInfo);
+        clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees);
 
         float milliseconds = 0;
         cudaEventElapsedTime(&milliseconds, start, stop);
@@ -103,7 +101,7 @@ void RegisterBenchmarks(const std::string& datasetPath) {
 }
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_old";
+    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
     RegisterBenchmarks(datasetPath);
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();

@@ -1,241 +1,4 @@
 #include "parser.h"
-#include <thrust/device_vector.h>
-#include <thrust/scan.h>
-
-__device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length) {
-    unsigned int extracted_bits = getNBits(stream, bit_offset, 16);
-    // Compare against Huffman table
-    for (int i = 0; i < 256; ++i) {
-        if (huff_bits[i] > 0 && huff_bits[i] <= 16) { // Valid bit length
-            unsigned int mask = (1 << huff_bits[i]) - 1;
-            if ((extracted_bits >> (16 - huff_bits[i]) & mask) == huff_codes[i]) {
-                code = i;
-                length = huff_bits[i];
-                return i;
-            }
-        }
-    }
-    return -1;
-}
-
-template <typename T>
-__device__ void koggeStonePrefixSumRange(T *arr, int i, int k, int j) {
-    int tid = threadIdx.x;
-    int blockSize = blockDim.x;
-    int ind = tid * k + i;
-    int numSegments = (((j - i) / k) + blockSize - 2) / (blockSize - 1);
-
-    int start = i;
-    int end = min(start + blockSize * k, j);
-
-    for (int seg = 0; seg < numSegments; seg++) {
-        for (int offset = k; offset < end - start; offset *= 2) {
-            T temp = 0;
-            if (ind >= start + offset) {
-                temp = arr[ind - offset];
-            }
-            __syncthreads();
-            if (ind < end) {
-                arr[ind] += temp;
-            }
-            __syncthreads();
-        }
-
-        ind += (blockSize - 1) * k;
-        start += (blockSize - 1) * k;
-        end = min(start + blockSize * k, j);
-    }
-}
-
-__device__ void decodeSequence(
-    int seqInd, int start, int end, bool overflow, bool write,
-    int16_t* outBuffer, int* sInfo, uint8_t* imageData, uint16_t* hfCodes, int* hfLengths,
-    int* returnState, int imageDataLength) {
-
-    // decode state variables
-    int p = start; // start bit offset for the subsequence
-    int n = 0;     // number of decoded symbols
-    int c = 0;     // current component (Y, assuming)
-    int z = 0;     // zig-zag index
-    int posInOutput = 0;
-
-    // load the state from the previous sequence if in overflow mode
-    if (write && seqInd > 0) {
-        posInOutput = sInfo[(seqInd - 1) * 4 + 1];
-    }
-    if (overflow) {
-        p = sInfo[(seqInd - 1) * 4 + 0];
-        c = sInfo[(seqInd - 1) * 4 + 2];
-        z = sInfo[(seqInd - 1) * 4 + 3];
-    }
-    // decode symbols in the subsequence
-    while (p < end) {
-        int code = 1, codeLength = 1;
-
-        // select huffman table based on the current component and zig-zag index
-        uint16_t dcOffset = (c > 0) * 256;
-        uint16_t acOffset = (z > 0) * 512;
-
-        match_huffman_code(imageData, p, hfCodes + dcOffset + acOffset, hfLengths + dcOffset + acOffset, code, codeLength);
-
-        p += codeLength;
-
-        if (p > imageDataLength) break;
-
-        int leadingZeros = 0;
-        if ((code == 0) && (z > 0)) {
-            leadingZeros = 63 - z;
-        }
-        else if ((code > 15) && (z > 0)) {
-            leadingZeros += (code >> 4);
-            code = code & 0x0F;
-        }
-
-        n += leadingZeros;
-        z += leadingZeros;
-        posInOutput += leadingZeros;
-
-        if (write) {
-            uint16_t bits = getNBits(imageData, p, code);
-            int16_t decoded = decodeNumber(code, bits);
-            outBuffer[posInOutput] = decoded;
-        }
-        else {
-            p += code;
-        }
-
-        //increment the state values
-        n++;
-        z++;
-        posInOutput++;
-
-        if (z >= 64) {
-            z = 0;
-            c = (c + 1) % 3;
-        }
-    }
-
-    returnState[0] = p;
-    returnState[1] = n;
-    returnState[2] = c;
-    returnState[3] = z;
-}
-
-__device__ bool isSynchronized(int* returnState, int* storedState) {
-    // synchronisation occurs when all key state variables match
-    return storedState[0] == returnState[0] && // bit offset
-           storedState[2] == returnState[2] && // component
-           storedState[3] == returnState[3];   // zig-zag index
-}
-
-__device__ void parallelHuffManDecode(
-    uint8_t* imageData, int imageDataLength, int16_t* outBuffer, 
-    uint16_t* hfCodes, int* hfLengths, int totalPixels, int blockSize, int* sInfo) {
-
-    int threadId = threadIdx.x;
-
-    // divide the bitstream into even parts
-    int segmentSize = (imageDataLength + blockSize - 1) / blockSize;
-    int start = threadId * segmentSize;
-    int end = min(start + segmentSize, imageDataLength);
-
-    //printf("imageDataLength:%d\n", imageDataLength);
-
-    // decode the segment assigned to this thread
-    int returnState[4]; // array to hold decoding state [p, n, c, z]
-    decodeSequence(threadId, start, end, false, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength);
-
-    sInfo[threadId * 4 + 0] = returnState[0]; // bit offset
-    sInfo[threadId * 4 + 1] = returnState[1]; // symbols decoded
-    sInfo[threadId * 4 + 2] = returnState[2]; // component (Y/Cb/Cr)
-    sInfo[threadId * 4 + 3] = returnState[3]; // zig-zag index
-
-    __syncthreads();
-
-    int seqInd = threadId + 1; // overflow to the next segment
-    bool isSynced = false;
-    for (int i = 0; i < blockSize; i++) {
-        if ((!isSynced) && (seqInd < blockSize)) {
-            start = seqInd * segmentSize;
-            end = min(start + segmentSize, imageDataLength);
-            // decode the current sequence
-            decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength);
-
-            isSynced = isSynchronized(returnState, &sInfo[seqInd * 4]);
-
-            // // Print the current sequence index and returnState for debugging
-            // if (threadId == 0) {
-            //     printf("Thread: %d, Sequence: %d\n", threadId, seqInd);
-            //     printf("ReturnState: [p: %d, n: %d, c: %d, z: %d]\n", returnState[0], returnState[1], returnState[2], returnState[3]);
-
-            //     printf("sInfo:\n");
-            //     for (int i = 0; i < blockSize; i++) {
-            //         printf("  sInfo[%d]: [p: %d, n: %d, c: %d, z: %d]\n",
-            //             i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
-            //     }
-            // }
-
-            sInfo[seqInd * 4 + 0] = returnState[0]; // bit offset
-            sInfo[seqInd * 4 + 1] = returnState[1]; // symbols decoded
-            sInfo[seqInd * 4 + 2] = returnState[2]; // current component
-            sInfo[seqInd * 4 + 3] = returnState[3]; // zigzag index
-
-            seqInd++;
-        }
-        __syncthreads();
-    }
-
-    // perform exclusive prefix sum to calculate offsets
-    //koggeStonePrefixSumRange(sInfo, 1, 4, 4 * blockSize);
-
-    if (threadId == 0) {
-        int sum = 0;
-        int ind = 1;
-        while (ind < 4 * blockSize) {
-            sum += sInfo[ind];
-            sInfo[ind] = sum;
-            ind += 4;
-        }
-    }
-    __syncthreads();
-
-    // if (threadId == 0) {
-    //     printf("sInfo after prefix sum\n");
-    //     for (int i = 0; i < blockSize; i++) {
-    //         printf("  sInfo[%d]: [p: %d, n: %d, c: %d, z: %d]\n",
-    //             i, sInfo[i * 4 + 0], sInfo[i * 4 + 1], sInfo[i * 4 + 2], sInfo[i * 4 + 3]);
-    //     }
-    // }
-    // __syncthreads();
-    // re-decode with corrected offsets
-
-    start = threadId * segmentSize;
-    end = min(start + segmentSize, imageDataLength);
-    if (threadId == 0) {
-        decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength);
-    } else {
-        decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength);
-    }
-    __syncthreads();
-
-    // for (int c = 0; c < 3; ++c) { // Process each channel (Y, Cb, Cr)
-    //     koggeStonePrefixSumRange(outBuffer, c * totalPixels, 64, (c+1) * totalPixels);
-    // }
-
-    if (threadId < 3) {
-        int16_t dcCoeff = 0;
-        int ind = threadId * 64;
-        while (ind < 3 * totalPixels) {
-            dcCoeff += outBuffer[ind];
-            outBuffer[ind] = dcCoeff;
-            ind += 192;
-        }
-    }
-
-    __syncthreads();
-}
-
-
 
 __device__ int16_t clip(int16_t value) {
     value = max(-256, value);
@@ -348,15 +111,11 @@ void checkCudaError(cudaError_t err, const char* msg) {
 }
 
 /* Function to allocate the GPU space. */
-void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees,
-              int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height,
-              int*& zigzagLocations, int*& sInfo, int maxThreads) {
+void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int width, int height, int*& zigzagLocations) {
 
     const size_t codeSize = 256 * sizeof(uint16_t);
     const size_t lengthSize = 256 * sizeof(int);
-    int paddedWidth = ((width + 7) / 8) * 8;
-    int paddedHeight = ((height + 7) / 8) * 8;
-    const size_t imageSize = paddedWidth * paddedHeight * sizeof(int16_t);
+    const size_t imageSize = width * height * sizeof(int16_t);
 
     checkCudaError(cudaMalloc((void**)&hfCodes, codeSize * 4), "Failed to allocate device memory for huffman codes.");
     checkCudaError(cudaMalloc((void**)&hfLengths, lengthSize * 4), "Failed to allocate device memory for huffman lengths.");
@@ -379,12 +138,10 @@ void allocate(uint16_t*& hfCodes, int*& hfLengths, std::unordered_map<int,Huffma
     checkCudaError(cudaMalloc((void**)&yCrCbChannels, imageSize * 3), "Failed to allocate device memory for one yCrCb channel.");
     checkCudaError(cudaMalloc((void**)&rgbChannels, imageSize * 3), "Failed to allocate device memory for one rgb channel.");
     checkCudaError(cudaMalloc((void**)&outputChannels, imageSize * 3), "Failed to allocate device memory for one output channel.");
-
-    // Allocate memory for sInfo
-    checkCudaError(cudaMalloc((void**)&sInfo, 4 * maxThreads * sizeof(int)), "Failed to allocate memory for sInfo.");
+   
 }
 
-void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& numBits, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
+void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, int& width, int& height, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {  
 
     fs::path file_path(imagePath);
     std::string filename = file_path.filename().string();
@@ -494,7 +251,22 @@ void extract(std::string imagePath, uint8_t*& quantTables, uint8_t*& imageData, 
             break;
         }
     } 
-    numBits = imageDataLength * 8;
+}
+
+__device__ int match_huffman_code(uint8_t* stream, int bit_offset, uint16_t* huff_codes, int* huff_bits, int &code, int &length) {
+    unsigned int extracted_bits = getNBits(stream, bit_offset, 16);
+    // Compare against Huffman table
+    for (int i = 0; i < 256; ++i) {
+        if (huff_bits[i] > 0 && huff_bits[i] <= 16) { // Valid bit length
+            unsigned int mask = (1 << huff_bits[i]) - 1;
+            if ((extracted_bits >> (16 - huff_bits[i]) & mask) == huff_codes[i]) {
+                code = i;
+                length = huff_bits[i];
+                return i;
+            }
+        }
+    }
+    return -1;
 }
 
 __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
@@ -538,9 +310,9 @@ __device__ int buildMCU(int16_t* outBuffer, uint8_t* imageData, int bitOffset,
 }
 
 __device__ void performHuffmanDecoding(uint8_t* imageData, int16_t* yCrCbChannels, uint16_t* hfCodes, int* hfLengths, int width, int height) {
-    // int16_t* curLuminous = yCrCbChannels;
-    // int16_t* curChromRed = yCrCbChannels + width * height;
-    // int16_t* curChromYel = yCrCbChannels + 2 * width * height;
+    int16_t* curLuminous = yCrCbChannels;
+    int16_t* curChromRed = yCrCbChannels + width * height;
+    int16_t* curChromYel = yCrCbChannels + 2 * width * height;
     int oldLumCoeff = 0, oldCbdCoeff = 0, oldCrdCoeff = 0;
     int bitOffset = 0;
 
@@ -549,21 +321,21 @@ __device__ void performHuffmanDecoding(uint8_t* imageData, int16_t* yCrCbChannel
 
     for (int y = 0; y < yBlocks; y++) {
         for (int x = 0; x < xBlocks; x++) {
-            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldLumCoeff, hfCodes, hfLengths, hfCodes + 512, hfLengths+ 512);
-            yCrCbChannels = yCrCbChannels + 64;
-            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldCbdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-            yCrCbChannels = yCrCbChannels + 64;
-            bitOffset = buildMCU(yCrCbChannels, imageData, bitOffset, oldCrdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
-            yCrCbChannels = yCrCbChannels + 64;
+            bitOffset = buildMCU(curLuminous, imageData, bitOffset, oldLumCoeff, hfCodes, hfLengths, hfCodes + 512, hfLengths+ 512);
+            bitOffset = buildMCU(curChromRed, imageData, bitOffset, oldCbdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
+            bitOffset = buildMCU(curChromYel, imageData, bitOffset, oldCrdCoeff, hfCodes + 256, hfLengths + 256, hfCodes + 768, hfLengths + 768);
+            curLuminous += 64;
+            curChromRed += 64;
+            curChromYel += 64;
         }
     }
 }
 
 __device__ void performZigzagReordering(int16_t* yCrCbChannels, int16_t* rgbChannels, uint8_t* quantTables,
-                                        int channelId, int inBlockIndex, int pixelIndex, int* zigzagLocations) {
+                                        int blockIndex, int threadIndexInBlock, int threadId, int pixelIndex, int totalPixels, int channelId, int* zigzagLocations) {
 
-    rgbChannels[pixelIndex] = yCrCbChannels[channelId * 64 + (pixelIndex / 192) * 192 + zigzagLocations
-    [inBlockIndex]] * quantTables[(64 & -(channelId > 0)) + zigzagLocations[inBlockIndex]];
+    rgbChannels[channelId * totalPixels + pixelIndex] = yCrCbChannels[channelId * totalPixels+blockIndex * 64 + zigzagLocations
+    [threadIndexInBlock]] * quantTables[(64 & -(channelId > 0)) + zigzagLocations[threadIndexInBlock]];
 }
 
 __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChannels,
@@ -586,58 +358,35 @@ __device__ void performColorConversion(int16_t* rgbChannels, int16_t* outputChan
         int actualIndex = globalRow * width + globalColumn;
 
         // Retrieve pixel data and perform the color conversion
-        int ij = i / 64;
-        ij = ij * 192;
-        ij = ij + (i % 64);
-
-        float red = rgbChannels[2*64+ij] * (2 - 2 * 0.299) + rgbChannels[ij];
-        float blue = rgbChannels[64 + ij] * (2 - 2 * 0.114) + rgbChannels[ij];
-        float green = (rgbChannels[ij] - 0.114 * blue - 0.299 * red) / 0.587;
+        float red = rgbChannels[2*totalPixels+i] * (2 - 2 * 0.299) + rgbChannels[i];
+        float blue = rgbChannels[totalPixels + i] * (2 - 2 * 0.114) + rgbChannels[i];
+        float green = (rgbChannels[i] - 0.114 * blue - 0.299 * red) / 0.587;
 
         // Clamp values to [0, 255]
-        outputChannels[3*actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
-        outputChannels[3*actualIndex+1] = min(max(static_cast<int16_t>(green + 128), 0), 255);
-        outputChannels[3*actualIndex+2] = min(max(static_cast<int16_t>(blue + 128), 0), 255);
+        outputChannels[actualIndex] = min(max(static_cast<int16_t>(red + 128), 0), 255);
+        outputChannels[totalPixels+ actualIndex] = min(max(static_cast<int16_t>(green + 128), 0), 255);
+        outputChannels[2*totalPixels+actualIndex] = min(max(static_cast<int16_t>(blue + 128), 0), 255);
     }
 }
 
-__global__ void decodeKernel(
-    uint8_t* imageData,
-    int imageDataLength,
-    int16_t* yCrCbChannels,
-    int16_t* rgbChannels,
-    int16_t* outputChannels,
-    int width,
-    int height,
-    uint8_t* quantTables,
-    uint16_t* hfCodes,
-    int* hfLengths,
-    int* zigzagLocations,
-    int* sInfo) // Pass global memory for sInfo
-{
-    int threadId = threadIdx.x;  // Thread ID within the block
-    int blockSize = blockDim.x;  // Total number of threads in the block
-
-    // Call decodeImage with all necessary parameters
-    decodeImage(
-        imageData,
-        imageDataLength,
-        yCrCbChannels,
-        rgbChannels,
-        outputChannels,
-        width,
-        height,
-        quantTables,
-        hfCodes,
-        hfLengths,
-        zigzagLocations,
-        sInfo,        // Pass the global memory pointer for sInfo
-        threadId,
-        blockSize
-    );
+__global__ void decodeKernel(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations) {
+    // int imageId = blockIdx.x;
+    int threadId = threadIdx.x;
+    int blockSize = blockDim.x;
+    decodeImage(imageData,
+                yCrCbChannels,
+                rgbChannels,
+                outputChannels,
+                width,
+                height,
+                quantTables,
+                hfCodes,
+                hfLengths,
+                zigzagLocations,
+                threadId, blockSize);
 }
 
-__device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int* sInfo, int threadId, int blockSize) {
+__device__ void decodeImage(uint8_t* imageData, int16_t* yCrCbChannels, int16_t* rgbChannels, int16_t* outputChannels, int width, int height, uint8_t* quantTables, uint16_t* hfCodes, int* hfLengths, int* zigzagLocations, int threadId, int blockSize) {
 
     __shared__ int zigzagMap[1024];
 
@@ -646,21 +395,25 @@ __device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yC
         zigzagMap[pixelIndex] = zigzagLocations[pixelIndex];
         pixelIndex += blockSize;
     }
+
+
     __syncthreads();
-
-    int paddedWidth = ((width + 7) / 8) * 8;
-    int paddedHeight = ((height + 7) / 8) * 8;
-    int totalPixels = paddedWidth * paddedHeight;
-
-    parallelHuffManDecode(imageData, imageDataLength, yCrCbChannels, hfCodes, hfLengths, totalPixels, blockSize, sInfo);
+    int totalPixels = width * height;
+    pixelIndex = threadId;
+    if (threadId==0) {
+        performHuffmanDecoding(imageData, yCrCbChannels, hfCodes, hfLengths, width, height);
+    }
     __syncthreads();
 
     pixelIndex = threadId;
     while (pixelIndex < 3 * totalPixels) {
-        int channel = (pixelIndex % 192) / 64;
-        int inBlockIndex = pixelIndex % 64;
+        int channel = pixelIndex / totalPixels;
+        int index = pixelIndex % totalPixels;
+        int threadIndexInBlock = index % 64;
+        int blockIndex = index / 64;
 
-        performZigzagReordering(yCrCbChannels, rgbChannels, quantTables, channel, inBlockIndex, pixelIndex, zigzagMap);
+        performZigzagReordering(yCrCbChannels, rgbChannels, quantTables,
+                                blockIndex, threadIndexInBlock, threadId, index, totalPixels, channel, zigzagMap);
 
         pixelIndex += blockSize;
     }
@@ -683,17 +436,18 @@ __device__ void decodeImage(uint8_t* imageData, int imageDataLength, int16_t* yC
         pixelIndex += blockSize;
     }
 
-     __syncthreads();
-    performColorConversion(rgbChannels, outputChannels, totalPixels, paddedWidth, threadId, blockSize);
+    __syncthreads();
+
+    // Iterate over pixels handled by this thread
+    performColorConversion(rgbChannels, outputChannels, totalPixels, width, threadId, blockSize);
 }
 
 __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
+    // int globalId = blockIdx.x * blockDim.x + threadIdx.x;
     int imageId = blockIdx.x;
     int threadId = threadIdx.x;
     int blockSize = blockDim.x;
-
     decodeImage(deviceStructs[imageId].imageData,
-                deviceStructs[imageId].imageDataLength,
                 deviceStructs[imageId].yCrCbChannels,
                 deviceStructs[imageId].rgbChannels,
                 deviceStructs[imageId].outputChannels,
@@ -703,12 +457,10 @@ __global__ void batchDecodeKernel(DeviceData* deviceStructs) {
                 deviceStructs[imageId].hfCodes,
                 deviceStructs[imageId].hfLengths,
                 deviceStructs[imageId].zigzagLocations,
-                deviceStructs[imageId].sInfo, // Use sInfo from DeviceData
-                threadId,
-                blockSize);
+                threadId, blockSize);
 }
 
-void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees, int*& sInfo) {
+void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*& yCrCbChannels, int16_t*& rgbChannels, int16_t*& outputChannels, int*& zigzagLocations, uint8_t*& imageData, std::unordered_map<int,HuffmanTree*>& huffmanTrees) {
     // Freeing the memory
     cudaFree(hfCodes);
     cudaFree(hfLengths);
@@ -718,7 +470,6 @@ void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*&
     cudaFree(yCrCbChannels);
     cudaFree(rgbChannels);
     cudaFree(outputChannels);
-    cudaFree(sInfo);
     for(auto& [key, item]: huffmanTrees) {
         if (item != NULL) {
             delete item;
@@ -727,34 +478,12 @@ void clean(uint16_t*& hfCodes, int*& hfLengths, uint8_t*& quantTables, int16_t*&
 }
 
 void write(int16_t* outputChannels, int width, int height, std::string filename) {
-    int paddedWidth = ((width + 7) / 8) * 8;
-    int paddedHeight = ((height + 7) / 8) * 8;
-    size_t channelSize = paddedWidth * paddedHeight * sizeof(int16_t);
-
     ImageChannels channels(height * width);
+    size_t channelSize = width * height * sizeof(int16_t);
+    cudaMemcpy(channels.getR().data(), outputChannels, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels.getG().data(), outputChannels+width*height, channelSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(channels.getB().data(), outputChannels+2*width*height, channelSize, cudaMemcpyDeviceToHost);
 
-    std::vector<int16_t> tempChannels(channelSize*3);
-    cudaMemcpy(tempChannels.data(), outputChannels, channelSize*3, cudaMemcpyDeviceToHost);
-    //cudaMemcpy(channels.getG().data(), outputChannels+width*height, channelSize, cudaMemcpyDeviceToHost);
-    //cudaMemcpy(channels.getB().data(), outputChannels+2*width*height, channelSize, cudaMemcpyDeviceToHost);
-
-    for (int row = 0; row < paddedHeight; row++) {
-        for (int col = 0; col < paddedWidth; col++) {
-            if (row < height && col < width) {
-                int i = row * paddedWidth + col;
-                int j = row * width + col;
-                channels.getR()[j] = tempChannels[3*i];
-                channels.getG()[j] = tempChannels[3*i+1];
-                channels.getB()[j] = tempChannels[3*i+2];
-            }
-        }
-    }
-
-    // for (int i = 0; i < channelSize; i++) {
-    //     channels.getR()[i] = tempChannels[3*i];
-    //     channels.getG()[i] = tempChannels[3*i+1];
-    //     channels.getB()[i] = tempChannels[3*i+2];
-    // }
     // Writing the decoded channels to a file instead of displaying using opencv
     fs::path output_dir = "../testing/cudaO_output_arrays";
     // fs::path output_dir = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/bench"; // Change the directory name here for future CUDA implementations
