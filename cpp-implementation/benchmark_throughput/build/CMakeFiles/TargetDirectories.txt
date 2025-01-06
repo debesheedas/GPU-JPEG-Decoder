@@ -1,5 +1,0 @@
-/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/benchmark_throughput/build/CMakeFiles/decoder.dir
-/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/benchmark_throughput/build/CMakeFiles/benchmark_test.dir
-/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/benchmark_throughput/build/CMakeFiles/test.dir
-/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/benchmark_throughput/build/CMakeFiles/edit_cache.dir
-/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/benchmark_throughput/build/CMakeFiles/rebuild_cache.dir

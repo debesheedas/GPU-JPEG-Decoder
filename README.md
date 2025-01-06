@@ -20,10 +20,10 @@ GPU-JPEG-Decoder is a high-performance tool for decoding JPEG images on GPUs. Th
 ## Repository Structure
 ```
 GPU-JPEG-Decoder/
-├── benchmarking_dataset/       # Datasets for runtime and throughput testing
+├── datasets/       # Datasets for runtime and throughput testing
 ├── data_preprocessing/         # Scripts to preprocess images into 444 JPEG format
-├── cpp-implementation/         # C++ implementation of the decoder
-├── cudaO-implementation/       # CUDA implementation (cudaO)
+├── cpp-decoder/         # C++ implementation of the decoder
+├── cuda-decoder/       # CUDA implementation (cudaO)
 ├── plots/                      # Benchmarking visualization scripts
 ├── testing/                    # Validation scripts and test cases
 ├── python-implementation/      # Python implementation for initial reference
