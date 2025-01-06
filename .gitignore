@@ -7,11 +7,11 @@ images.tar
 /image-data
 image-data.zip
 /Images
-/benchmarking_dataset
-/benchmarking_dataset_old
-/benchmarking_dataset_mini
-/benchmarking_dataset_through
-/benchmarking_dataset_through_v2
+/datasets/benchmarking_dataset
+/datasets/benchmarking_dataset_old
+/datasets/benchmarking_dataset_mini
+/datasets/benchmarking_dataset_through
+/datasets/benchmarking_dataset_through_v2
 */images/
 *.array
 */benchmarking_dataset/build

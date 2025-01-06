@@ -4,7 +4,7 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
-#include <cstdlib>
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cpp-implementation/src/parser.h"
 
 namespace fs = std::filesystem;
 
@@ -21,30 +21,25 @@ std::vector<std::string> getImagesBySize(const std::string& datasetPath, int siz
     return imagePaths;
 }
 
-// Benchmark function template for JPEG decoding using the executable
+// Benchmark function template for JPEG decoding
 void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string>& imagePaths) {
     std::string imagePath = imagePaths[state.range(0)];
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
     
     for (auto _ : state) {
+        // reading of jpeg here
+        JPEGParser parser(imagePath);
         auto start_time = std::chrono::high_resolution_clock::now();
-        
-        // Call the external executable
-        std::string command = "../../zune -i " + imagePath;
-        int exit_code = std::system(command.c_str());
-        
+        parser.extract();
+        parser.decode();
         auto end_time = std::chrono::high_resolution_clock::now();
+        parser.write();
+        // writing of output file here
         std::chrono::duration<double> decode_duration = end_time - start_time;
-
-        // Set iteration time only if the executable executed successfully
-        if (exit_code == 0) {
-            state.SetIterationTime(decode_duration.count());
-            resultFile << imagePath << " " << decode_duration.count() * 1000 << "\n";  // time in ms
-        } else {
-            state.SkipWithError("Executable failed to run.");
-        }
+        state.SetIterationTime(decode_duration.count());
+        resultFile << imagePath << " " << decode_duration.count() * 1000 << "\n";  // time in ms
     }
-
+    
     resultFile.close();
 }
 

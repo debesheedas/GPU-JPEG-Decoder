@@ -4,10 +4,11 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
+#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda-decoder/src/parser.h"
+#include <cuda_runtime.h>
+#include <nvtx3/nvToolsExt.h>
 
 namespace fs = std::filesystem;
-
-std::string path_to_decoder = "/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/jpeglib-implementation/libjpeg_install/build/djpeg";
 
 // Function to get all images with a specified size
 std::vector<std::string> getImagesBySize(const std::string& datasetPath, int size) {
@@ -26,19 +27,56 @@ std::vector<std::string> getImagesBySize(const std::string& datasetPath, int siz
 void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string>& imagePaths) {
     std::string imagePath = imagePaths[state.range(0)];
     std::ofstream resultFile("benchmark_results.txt", std::ios_base::app);
+    fs::path file_path(imagePath);
+    std::string filename = file_path.filename().string();
     
     for (auto _ : state) {
-        auto start_time = std::chrono::high_resolution_clock::now();
-        std::string command = path_to_decoder + " " + imagePath + "> /dev/null 2>&1";
-        int ret_code = system(command.c_str());
-        if (ret_code != 0) {
-            throw std::runtime_error("Command execution failed with code: " + std::to_string(ret_code));
-        }
+        
+        // Start CUDA timer for GPU-based operations
+        cudaEvent_t start, stop;
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> decode_duration = end_time - start_time;
-        state.SetIterationTime(decode_duration.count());
-        resultFile << imagePath << " " << decode_duration.count() * 1000 << "\n";  // time in ms
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+
+        nvtxRangePush("Full");
+
+        uint16_t* hfCodes; 
+        int* hfLengths;
+        uint8_t* quantTables;
+        int16_t* yCrCbChannels;
+        int16_t* rgbChannels;
+        int16_t* outputChannels;
+        int* zigzagLocations;
+
+        uint8_t* imageData;
+        int imageDataLength;
+        int* sInfo;
+        int width = 0;
+        int height = 0;
+        std::unordered_map<int,HuffmanTree*> huffmanTrees;
+
+        // Extracting the byte chunks
+        extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
+        // Allocating memory for the arrays
+        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 1024);
+
+        cudaEventRecord(start);
+        
+        decodeKernel<<<1, 1024>>>(imageData, imageDataLength, yCrCbChannels, rgbChannels, outputChannels, width, height, quantTables, hfCodes, hfLengths, zigzagLocations, sInfo);
+        
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        
+        nvtxRangePop();
+
+        write(outputChannels, width, height, filename);
+        clean(hfCodes, hfLengths, quantTables, yCrCbChannels, rgbChannels, outputChannels, zigzagLocations, imageData, huffmanTrees, sInfo);
+
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        state.SetIterationTime(milliseconds / 1000.0); // Set iteration time for benchmark
+        resultFile << imagePath << " " << milliseconds << "\n"; // Time in milliseconds
     }
     
     resultFile.close();
