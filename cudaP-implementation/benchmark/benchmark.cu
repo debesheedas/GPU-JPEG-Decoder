@@ -60,7 +60,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
         // Extracting the byte chunks
         extract(imagePath, quantTables, imageData, imageDataLength, width, height, paddedWidth, paddedHeight, huffmanTrees);
         // Allocating memory for the arrays
-        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, paddedWidth, paddedHeight, zigzagLocations, sInfo, 32);
+        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, paddedWidth, paddedHeight, zigzagLocations, sInfo, 1024);
 
         cudaEventRecord(start);
         
@@ -86,7 +86,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
 
 // Register benchmarks for different image sizes
 void RegisterBenchmarks(const std::string& datasetPath) {
-    const std::vector<int> imageSizes = {200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000};
+    const std::vector<int> imageSizes = { 1400, 1600, 1800, 2000};
     
     for (int size : imageSizes) {
         auto imagePaths = getImagesBySize(datasetPath, size);
