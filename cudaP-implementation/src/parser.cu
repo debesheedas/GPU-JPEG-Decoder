@@ -49,7 +49,7 @@ __device__ void koggeStonePrefixSumRange(T *arr, int i, int k, int j) {
 
 __device__ void decodeSequence(
     int seqInd, int start, int end, bool overflow, bool write, int16_t* outBuffer, int* sInfo, 
-    uint8_t* imageData, uint16_t* hfCodes, int* hfLengths, int* returnState, int imageDataLength) {
+    uint8_t* imageData, uint16_t* hfCodes, int* hfLengths, int* returnState, int imageDataLength, int totalPixels) {
 
     // decode state variables
     int p = start; // start bit offset for the subsequence
@@ -98,7 +98,8 @@ __device__ void decodeSequence(
         if (write) {
             uint16_t bits = getNBits(imageData, p, code);
             int16_t decoded = decodeNumber(code, bits);
-            outBuffer[posInOutput] = decoded;
+            if (posInOutput < 3 * totalPixels)
+                outBuffer[posInOutput] = decoded;
         }
         else {
             p += code;
@@ -141,7 +142,7 @@ __device__ void parallelHuffManDecode(
 
     // decode the segment assigned to this thread
     int returnState[4]; // array to hold decoding state [p, n, c, z]
-    decodeSequence(threadId, start, end, false, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength);
+    decodeSequence(threadId, start, end, false, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength, totalPixels);
 
     sInfo[threadId * 4 + 0] = returnState[0]; // bit offset
     sInfo[threadId * 4 + 1] = returnState[1]; // symbols decoded
@@ -157,7 +158,7 @@ __device__ void parallelHuffManDecode(
             start = seqInd * segmentSize;
             end = min(start + segmentSize, imageDataLength);
             // decode the current segment
-            decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength);
+            decodeSequence(seqInd, start, end, true, false, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength, totalPixels);
 
             isSynced = isSynchronized(returnState, &sInfo[seqInd * 4]);
 
@@ -187,9 +188,9 @@ __device__ void parallelHuffManDecode(
     start = threadId * segmentSize;
     end = min(sInfo[threadId * 4], imageDataLength);
     if (threadId == 0) {
-        decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength);
+        decodeSequence(threadId, start, end, false, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength, totalPixels);
     } else {
-        decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength);
+        decodeSequence(threadId, start, end, true, true, outBuffer, sInfo, imageData, hfCodes, hfLengths, returnState, imageDataLength, totalPixels);
     }
     __syncthreads();
 

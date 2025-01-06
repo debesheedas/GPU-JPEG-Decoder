@@ -58,7 +58,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, const std::vector<std::string
         // Extracting the byte chunks
         extract(imagePath, quantTables, imageData, imageDataLength, width, height, huffmanTrees);
         // Allocating memory for the arrays
-        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 32);
+        allocate(hfCodes, hfLengths, huffmanTrees, yCrCbChannels, rgbChannels, outputChannels, width, height, zigzagLocations, sInfo, 1024);
 
         cudaEventRecord(start);
         
