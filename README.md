@@ -171,19 +171,19 @@ Challenge 1: Correctness
 
 Challenge 2: Benchmarking
 
-Benchmarking Dataset:Challenges: Generate a runtime plot for varying input sizes using images with increasing dimensions at regular intervals. Sourcing high-resolution images, 100 images for each size category.Solution: Curated dataset from five sources: DIV2K, FLICKR2K, Unsplash Research Lite, COCO 2014, and a 4K dataset from Kaggle. Selected images at least as big as the desired dimensions and center-cropped them to exact specifications.
+	Benchmarking Dataset: Challenges: Generate a runtime plot for varying input sizes using images with increasing dimensions at regular intervals. Sourcing high-resolution images, 100 images for each size category.Solution: Curated dataset from five sources: DIV2K, FLICKR2K, Unsplash Research Lite, COCO 2014, and a 4K dataset from Kaggle. Selected images at least as big as the desired dimensions and center-cropped them to exact specifications.
+	
+	Memory Leaks: While running the benchmarking pipeline on the full dataset, the process was repeatedly terminated due to GPU memory overflow caused by memory not being freed.Resolution: We corrected all the memory leaks and freed up all explicitly allocated memory from both C++ and CUDA implementations.
 
-Memory Leaks:While running the benchmarking pipeline on the full dataset, the process was repeatedly terminated due to GPU memory overflow caused by memory not being freed.Resolution: We corrected all the memory leaks and freed up all explicitly allocated memory from both C++ and CUDA implementations.
-
-Throughput Benchmarking:Chunks are extracted on the CPU from the JPEG file, and then memory is allocated on the GPU with only pointers. The GPU does not support object-oriented concepts well.Resolution: HostData and DeviceData structs are defined on the GPU to pass all the data of a batch of images for throughput benchmarking.
+	Throughput Benchmarking: Chunks are extracted on the CPU from the JPEG file, and then memory is allocated on the GPU with only pointers. The GPU does not support object-oriented concepts well.Resolution: HostData and DeviceData structs are defined on the GPU to pass all the data of a batch of images for throughput benchmarking.
 
 Challenge 3: Performance
 
-Parallel Fast IDCT:Parallel fast IDCT did not give us as much of a speedup as compared to the serial fast IDCT.Resolution: Syncing between row and column operations was slowing it down. We removed branch statements to prevent thread divergence and removed the sync.
-
-Parallel Build MCU:Entropy decoding on the GPU using a single thread was much slower than doing it on the CPU. Hence, the parallel build MCU method, which tries to guess the block boundaries. Unfortunately, the syncs required hurt the performance more than helping.
-
-Removing Non-contiguous Memory Access Patterns:To improve cache hits, we tried to restructure some of our functions to access only contiguous memory locations. Partially implementing this did not improve our performance much, but we plan to extend this idea to the entire code and hope to see a more significant improvement.
+	Parallel Fast IDCT:Parallel fast IDCT did not give us as much of a speedup as compared to the serial fast IDCT.Resolution: Syncing between row and column operations was slowing it down. We removed branch statements to prevent thread divergence and removed the sync.
+	
+	Parallel Build MCU:Entropy decoding on the GPU using a single thread was much slower than doing it on the CPU. Hence, the parallel build MCU method, which tries to guess the block boundaries. Unfortunately, the syncs required hurt the performance more than helping.
+	
+	Removing Non-contiguous Memory Access Patterns:To improve cache hits, we tried to restructure some of our functions to access only contiguous memory locations. Partially implementing this did not improve our performance much, but we plan to extend this idea to the entire code and hope to see a more significant improvement.
 
 ### Contributors:
 1. Debeshee Das
