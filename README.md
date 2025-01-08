@@ -58,7 +58,7 @@ pip install -r requirements.txt
 ```
 4. Compile the decoder:
 ```
-    cd cudaO-implementation
+    cd cuda-decoder
     make
 ```
 
@@ -66,9 +66,9 @@ pip install -r requirements.txt
 
 Running the Decoder
 
-1. Navigate to the cudaO-implementation directory:
+1. Navigate to the cuda-decoder directory:
    ```
-   	 ./decoder /home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaO-implementation/profile.jpg
+   	 ./decoder /home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda-decoder/profile.jpg
    ```
 
 Testing
@@ -81,7 +81,7 @@ cd testing
 
 Compare Decoder Outputs: Run the decoder and compare its output to the ground truth:
 ```
-python3 compare.py ../cudaO-implementation
+python3 compare.py ../cuda-decoder
 ```
 To test a specific image:
 
@@ -91,7 +91,7 @@ NOTE: This python script takes command line arguments. The first argument is the
 If you want to compare only a particular image, you can pass the second argument as the name of the image file in the [testing/images](testing/images) folder. For example, to compare only the image named 5_200x200.jpg, you can run the script as follows:
 
 ```
-python3 compare.py ../cudaO-implementation ./images/5_200x200.jpg
+python3 compare.py ../cuda-decoder ./images/5_200x200.jpg
 ```
 Display Decoded Images: Use the display_image.py script to visualize the decoded channel arrays:
 Please see the [testing](testing/) folder which contains the following scripts. PLEASE ``cd`` into the testing directory before running these scripts and be careful of the relative addressing used:
@@ -103,12 +103,12 @@ with open("./cpp_output_arrays/5_200x200.array", "r") as file:
 ```
     
 ```
-python3 display_image.py /home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/cudaO_output_arrays/profile.array
+python3 display_image.py /home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/cuda_output_arrays/profile.array
 ```
 
 ## Benchmarking
 
-Navigate to cudaO-implementation and go to benchmark subfolder for runtime benchmarking and benchmark_throughput for throughput benchmarking. Then simply run the following:
+Navigate to cuda-decoder and go to benchmark subfolder for runtime benchmarking and benchmark_throughput for throughput benchmarking. Then simply run the following:
 
 ```
 bash bench.sh
@@ -163,25 +163,27 @@ nsys stats --report gputrace --format csv,column --output ., out.nsys-rep
 
 ## Challenges and Learnings
 
-Precision Errors
+Challenge 1: Correctness
 
-    Issue: Handling numerical errors during IDCT computation.
-    Solution: Improved precision by using higher-resolution floating-point arithmetic.
+Precision:Our C++ decoder outputs were close but did not match our CUDA outputs exactly, even though both were using the same code semantically.Resolution: Replacing floating-point IDCT with fast integer IDCT resolved this issue.
 
-Image Dimensions Not Divisible by 8
+Dimensions Not Divisible by 8:The reference Python implementation we used did not handle images with dimensions that were not divisible by 8. There was missing logic in the zigzag rearrangement code.Resolution: To support images of any size, we applied zero-padding to ensure dimensions are divisible by 8. We also tracked the boundaries of the original image data, ensuring only those pixels are included in the zigzag rearrangement and the final decoded output.
 
-    Issue: JPEG blocks require image dimensions to be multiples of 8.
-    Solution: Added padding logic during preprocessing.
+Challenge 2: Benchmarking
 
-Benchmarking Constraints
+Benchmarking Dataset:Challenges: Generate a runtime plot for varying input sizes using images with increasing dimensions at regular intervals. Sourcing high-resolution images, 100 images for each size category.Solution: Curated dataset from five sources: DIV2K, FLICKR2K, Unsplash Research Lite, COCO 2014, and a 4K dataset from Kaggle. Selected images at least as big as the desired dimensions and center-cropped them to exact specifications.
 
-    Issue: Limited availability of large datasets for throughput testing.
-    Solution: Created synthetic datasets to simulate real-world scenarios.
+Memory Leaks:While running the benchmarking pipeline on the full dataset, the process was repeatedly terminated due to GPU memory overflow caused by memory not being freed.Resolution: We corrected all the memory leaks and freed up all explicitly allocated memory from both C++ and CUDA implementations.
 
-GPU Memory Overflow
+Throughput Benchmarking:Chunks are extracted on the CPU from the JPEG file, and then memory is allocated on the GPU with only pointers. The GPU does not support object-oriented concepts well.Resolution: HostData and DeviceData structs are defined on the GPU to pass all the data of a batch of images for throughput benchmarking.
 
-    Issue: Large images exceeded available GPU memory.
-    Solution: Implemented tiling to process images in smaller chunks.
+Challenge 3: Performance
+
+Parallel Fast IDCT:Parallel fast IDCT did not give us as much of a speedup as compared to the serial fast IDCT.Resolution: Syncing between row and column operations was slowing it down. We removed branch statements to prevent thread divergence and removed the sync.
+
+Parallel Build MCU:Entropy decoding on the GPU using a single thread was much slower than doing it on the CPU. Hence, the parallel build MCU method, which tries to guess the block boundaries. Unfortunately, the syncs required hurt the performance more than helping.
+
+Removing Non-contiguous Memory Access Patterns:To improve cache hits, we tried to restructure some of our functions to access only contiguous memory locations. Partially implementing this did not improve our performance much, but we plan to extend this idea to the entire code and hope to see a more significant improvement.
 
 ### Contributors:
 1. Debeshee Das
