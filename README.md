@@ -165,9 +165,9 @@ nsys stats --report gputrace --format csv,column --output ., out.nsys-rep
 
 Challenge 1: Correctness
 
-	Precision:Our C++ decoder outputs were close but did not match our CUDA outputs exactly, even though both were using the same code semantically.Resolution: Replacing floating-point IDCT with fast integer IDCT resolved this issue.
+	Precision: Our C++ decoder outputs were close but did not match our CUDA outputs exactly, even though both were using the same code semantically.Resolution: Replacing floating-point IDCT with fast integer IDCT resolved this issue.
 	
-	Dimensions Not Divisible by 8:The reference Python implementation we used did not handle images with dimensions that were not divisible by 8. There was missing logic in the zigzag rearrangement code.Resolution: To support images of any size, we applied zero-padding to ensure dimensions are divisible by 8. We also tracked the boundaries of the original image data, ensuring only those pixels are included in the zigzag rearrangement and the final decoded output.
+	Dimensions Not Divisible by 8: The reference Python implementation we used did not handle images with dimensions that were not divisible by 8. There was missing logic in the zigzag rearrangement code.Resolution: To support images of any size, we applied zero-padding to ensure dimensions are divisible by 8. We also tracked the boundaries of the original image data, ensuring only those pixels are included in the zigzag rearrangement and the final decoded output.
 
 Challenge 2: Benchmarking
 
@@ -179,11 +179,11 @@ Challenge 2: Benchmarking
 
 Challenge 3: Performance
 
-	Parallel Fast IDCT:Parallel fast IDCT did not give us as much of a speedup as compared to the serial fast IDCT.Resolution: Syncing between row and column operations was slowing it down. We removed branch statements to prevent thread divergence and removed the sync.
+	Parallel Fast IDCT: Parallel fast IDCT did not give us as much of a speedup as compared to the serial fast IDCT.Resolution: Syncing between row and column operations was slowing it down. We removed branch statements to prevent thread divergence and removed the sync.
 	
-	Parallel Build MCU:Entropy decoding on the GPU using a single thread was much slower than doing it on the CPU. Hence, the parallel build MCU method, which tries to guess the block boundaries. Unfortunately, the syncs required hurt the performance more than helping.
+	Parallel Build MCU: Entropy decoding on the GPU using a single thread was much slower than doing it on the CPU. Hence, the parallel build MCU method, which tries to guess the block boundaries. Unfortunately, the syncs required hurt the performance more than helping.
 	
-	Removing Non-contiguous Memory Access Patterns:To improve cache hits, we tried to restructure some of our functions to access only contiguous memory locations. Partially implementing this did not improve our performance much, but we plan to extend this idea to the entire code and hope to see a more significant improvement.
+	Removing Non-contiguous Memory Access Patterns: To improve cache hits, we tried to restructure some of our functions to access only contiguous memory locations. Partially implementing this did not improve our performance much, but we plan to extend this idea to the entire code and hope to see a more significant improvement.
 
 ### Contributors:
 1. Debeshee Das
