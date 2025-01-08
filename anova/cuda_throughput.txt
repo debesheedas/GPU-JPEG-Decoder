@@ -1,0 +1,10 @@
+Throughput: 2582.38 images/sec, Bytes per second: 552.496 MB/sec
+Throughput: 2580.62 images/sec, Bytes per second: 552.119 MB/sec
+Throughput: 2585.59 images/sec, Bytes per second: 553.182 MB/sec
+Throughput: 2568.15 images/sec, Bytes per second: 549.452 MB/sec
+Throughput: 2574.95 images/sec, Bytes per second: 550.907 MB/sec
+Throughput: 2589.96 images/sec, Bytes per second: 554.117 MB/sec
+Throughput: 2585 images/sec, Bytes per second: 553.056 MB/sec
+Throughput: 2570.46 images/sec, Bytes per second: 549.946 MB/sec
+Throughput: 2570.39 images/sec, Bytes per second: 549.931 MB/sec
+Throughput: 2580.54 images/sec, Bytes per second: 552.103 MB/sec

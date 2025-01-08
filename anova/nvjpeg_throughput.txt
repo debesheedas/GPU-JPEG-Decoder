@@ -1,0 +1,10 @@
+Total Throughput for 3000 images: 2606.03 images/sec, Bytes per second: 557.555 MB/sec
+Total Throughput for 3000 images: 2422.13 images/sec, Bytes per second: 518.21 MB/sec
+Total Throughput for 3000 images: 2510.23 images/sec, Bytes per second: 537.061 MB/sec
+Total Throughput for 3000 images: 2524.7 images/sec, Bytes per second: 540.156 MB/sec
+Total Throughput for 3000 images: 2538.13 images/sec, Bytes per second: 543.029 MB/sec
+Total Throughput for 3000 images: 2505.83 images/sec, Bytes per second: 536.119 MB/sec
+Total Throughput for 3000 images: 2523.63 images/sec, Bytes per second: 539.927 MB/sec
+Total Throughput for 3000 images: 2555.33 images/sec, Bytes per second: 546.709 MB/sec
+Total Throughput for 3000 images: 2521.59 images/sec, Bytes per second: 539.49 MB/sec
+Total Throughput for 3000 images: 2552.14 images/sec, Bytes per second: 546.027 MB/sec
