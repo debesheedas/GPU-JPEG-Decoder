@@ -1,9 +1,9 @@
 # GPU-JPEG-Decoder
-High performance JPEG Decoder for GPU
+Fully Parallelized GPU-only High Performance JPEG Decoder
 
 ## Introduction
 
-GPU-JPEG-Decoder is a high-performance tool for decoding JPEG images on GPUs. This project leverages CUDA to implement efficient parallelization strategies, achieving significant speedups compared to traditional CPU-based decoders. The repository also includes benchmarking tools, profiling scripts, and support for testing on various datasets.
+Our CUDA decoder is a high-performance tool for decoding JPEG images on GPUs. This project leverages CUDA to implement efficient parallelization strategies, achieving significant speedups compared to traditional CPU (jpeglib and zune-jpeg) and GPU (nvJPEG) based decoders. The repository also includes benchmarking tools, profiling scripts, and support for testing on various datasets.
 
 ## Table of Contents
 
@@ -112,7 +112,6 @@ Navigate to cuda-decoder and go to benchmark subfolder for runtime benchmarking 
 
 ```
 bash bench.sh
-
 ```
 
 
@@ -163,27 +162,27 @@ nsys stats --report gputrace --format csv,column --output ., out.nsys-rep
 
 ## Challenges and Learnings
 
-Challenge 1: Correctness
+#### Challenge 1: Correctness
 
-	Precision: Our C++ decoder outputs were close but did not match our CUDA outputs exactly, even though both were using the same code semantically.Resolution: Replacing floating-point IDCT with fast integer IDCT resolved this issue.
+Precision: Our C++ decoder outputs were close but did not match our CUDA outputs exactly, even though both were using the same code semantically.Resolution: Replacing floating-point IDCT with fast integer IDCT resolved this issue.
 	
-	Dimensions Not Divisible by 8: The reference Python implementation we used did not handle images with dimensions that were not divisible by 8. There was missing logic in the zigzag rearrangement code.Resolution: To support images of any size, we applied zero-padding to ensure dimensions are divisible by 8. We also tracked the boundaries of the original image data, ensuring only those pixels are included in the zigzag rearrangement and the final decoded output.
+Dimensions Not Divisible by 8: The reference Python implementation we used did not handle images with dimensions that were not divisible by 8. There was missing logic in the zigzag rearrangement code.Resolution: To support images of any size, we applied zero-padding to ensure dimensions are divisible by 8. We also tracked the boundaries of the original image data, ensuring only those pixels are included in the zigzag rearrangement and the final decoded output.
 
-Challenge 2: Benchmarking
+#### Challenge 2: Benchmarking
 
-	Benchmarking Dataset: Challenges: Generate a runtime plot for varying input sizes using images with increasing dimensions at regular intervals. Sourcing high-resolution images, 100 images for each size category.Solution: Curated dataset from five sources: DIV2K, FLICKR2K, Unsplash Research Lite, COCO 2014, and a 4K dataset from Kaggle. Selected images at least as big as the desired dimensions and center-cropped them to exact specifications.
+Benchmarking Dataset: Challenges: Generate a runtime plot for varying input sizes using images with increasing dimensions at regular intervals. Sourcing high-resolution images, 100 images for each size category.Solution: Curated dataset from five sources: DIV2K, FLICKR2K, Unsplash Research Lite, COCO 2014, and a 4K dataset from Kaggle. Selected images at least as big as the desired dimensions and center-cropped them to exact specifications.
 	
-	Memory Leaks: While running the benchmarking pipeline on the full dataset, the process was repeatedly terminated due to GPU memory overflow caused by memory not being freed.Resolution: We corrected all the memory leaks and freed up all explicitly allocated memory from both C++ and CUDA implementations.
+Memory Leaks: While running the benchmarking pipeline on the full dataset, the process was repeatedly terminated due to GPU memory overflow caused by memory not being freed.Resolution: We corrected all the memory leaks and freed up all explicitly allocated memory from both C++ and CUDA implementations.
 
-	Throughput Benchmarking: Chunks are extracted on the CPU from the JPEG file, and then memory is allocated on the GPU with only pointers. The GPU does not support object-oriented concepts well.Resolution: HostData and DeviceData structs are defined on the GPU to pass all the data of a batch of images for throughput benchmarking.
+Throughput Benchmarking: Chunks are extracted on the CPU from the JPEG file, and then memory is allocated on the GPU with only pointers. The GPU does not support object-oriented concepts well.Resolution: HostData and DeviceData structs are defined on the GPU to pass all the data of a batch of images for throughput benchmarking.
 
-Challenge 3: Performance
+#### Challenge 3: Performance
 
-	Parallel Fast IDCT: Parallel fast IDCT did not give us as much of a speedup as compared to the serial fast IDCT.Resolution: Syncing between row and column operations was slowing it down. We removed branch statements to prevent thread divergence and removed the sync.
+Parallel Fast IDCT: Parallel fast IDCT did not give us as much of a speedup as compared to the serial fast IDCT.Resolution: Syncing between row and column operations was slowing it down. We removed branch statements to prevent thread divergence and removed the sync.
 	
-	Parallel Build MCU: Entropy decoding on the GPU using a single thread was much slower than doing it on the CPU. Hence, the parallel build MCU method, which tries to guess the block boundaries. Unfortunately, the syncs required hurt the performance more than helping.
+Parallel Build MCU: Entropy decoding on the GPU using a single thread was much slower than doing it on the CPU. Hence, the parallel build MCU method, which tries to guess the block boundaries. Unfortunately, the syncs required hurt the performance more than helping.
 	
-	Removing Non-contiguous Memory Access Patterns: To improve cache hits, we tried to restructure some of our functions to access only contiguous memory locations. Partially implementing this did not improve our performance much, but we plan to extend this idea to the entire code and hope to see a more significant improvement.
+Removing Non-contiguous Memory Access Patterns: To improve cache hits, we tried to restructure some of our functions to access only contiguous memory locations. Partially implementing this did not improve our performance much, but we plan to extend this idea to the entire code and hope to see a more significant improvement.
 
 ### Contributors:
 1. Debeshee Das
@@ -191,6 +190,4 @@ Challenge 3: Performance
 3. Emmy Zhou
 4. Nayanika Debnath
 5. Carlos Fernandez
-
-
-
+   
