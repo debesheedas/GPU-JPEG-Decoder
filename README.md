@@ -40,6 +40,11 @@ Ensure the following dependencies are installed on your system:
     CUDA Toolkit: 11.0+
     Libraries: OpenCV, Google Benchmark
 ```
+# Dataset
+
+benchmark runtime (1000 images): https://polybox.ethz.ch/index.php/s/Ipnl9UDsCYQBpZQ
+
+benchmark throughput (3000 images): https://polybox.ethz.ch/index.php/s/JTbwgz0OXwsukUK
 
 ## Step-by-Step Installation Guide
 
