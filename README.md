@@ -53,15 +53,11 @@ benchmark throughput (3000 images): https://polybox.ethz.ch/index.php/s/JTbwgz0O
 git clone https://github.com/example/GPU-JPEG-Decoder.git
 cd GPU-JPEG-Decoder
 ```
-2. Install required Python libraries:
-```
-pip install -r requirements.txt
-```
-3. Install Google Benchmark:
+2. Install Google Benchmark:
 ```
 ./setup_benchmark.sh
 ```
-4. Compile the decoder:
+3. Compile the decoder:
 ```
     cd cuda-decoder
     make
@@ -73,7 +69,7 @@ Running the Decoder
 
 1. Navigate to the cuda-decoder directory:
    ```
-   	 ./decoder /home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cuda-decoder/profile.jpg
+   	 ./decoder /GPU-JPEG-Decoder/cuda-decoder/profile.jpg
    ```
 
 Testing
@@ -108,7 +104,7 @@ with open("./cpp_output_arrays/5_200x200.array", "r") as file:
 ```
     
 ```
-python3 display_image.py /home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/cuda_output_arrays/profile.array
+python3 display_image.py /GPU-JPEG-Decoder/testing/cuda_output_arrays/profile.array
 ```
 
 ## Benchmarking
