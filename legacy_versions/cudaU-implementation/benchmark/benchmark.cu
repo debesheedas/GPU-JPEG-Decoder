@@ -4,7 +4,7 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaU-implementation/src/parser.h"
+#include "legacy_versions/cudaU-implementation/src/parser.h"
 #include <cuda_runtime.h>
 #include <nvtx3/nvToolsExt.h>
 

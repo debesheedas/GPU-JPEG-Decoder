@@ -627,7 +627,6 @@ void write(int16_t* outputChannels, int width, int height, std::string filename)
     }
     // Writing the decoded channels to a file instead of displaying using opencv
     fs::path output_dir = "../testing/cudaO_output_arrays";
-    // fs::path output_dir = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/testing/bench"; // Change the directory name here for future CUDA implementations
     fs::path full_path = output_dir / filename;
     full_path.replace_extension(".array");
     std::ofstream outfile(full_path);

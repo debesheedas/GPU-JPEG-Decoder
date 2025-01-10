@@ -22,7 +22,7 @@ list(APPEND CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES "/usr/local/cuda/lib64")
 
 # Add options for batch size and dataset path
 option(BATCH_SIZE "Batch size for benchmark" 512)  # Default batch size
-option(DATASET_PATH "Path to the dataset" "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini")  # Default dataset path
+option(DATASET_PATH "Path to the dataset" "GPU-JPEG-Decoder/benchmarking_dataset_mini")  # Default dataset path
 
 # Add executables (decoder and benchmark_test)
 add_executable(decoder

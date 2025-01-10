@@ -26,7 +26,7 @@ def readings(json_path):
 
 average_times = {}
 for version in versions:
-    results_json = os.path.join('/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/', version+'-implementation', 'benchmark/build/benchmark_results.json')
+    results_json = os.path.join('GPU-JPEG-Decoder/', version+'-implementation', 'benchmark/build/benchmark_results.json')
     average_times[version] = readings(results_json)
     print(average_times[version])
 
@@ -44,7 +44,7 @@ plt.grid(True)
 plt.tight_layout()
 
 # Save the plot to a file
-output_path = '/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/plots/benchmark_decoding_time_plot.png'
+output_path = 'GPU-JPEG-Decoder/plots/benchmark_decoding_time_plot.png'
 plt.savefig(output_path)  # Save as PNG file
 
 # avg = []

@@ -65,7 +65,7 @@ def calculate_stats(image_sizes):
     return avg_times, std_devs
 
 # Base path for the project
-base_path = '/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/'
+base_path = 'GPU-JPEG-Decoder/'
 
 # Extract average decoding times and standard deviations for each version
 average_times = {}

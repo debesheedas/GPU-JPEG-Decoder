@@ -2,7 +2,7 @@
 
 # List of batch sizes and datasets
 BATCH_SIZES=(32 64 128 256 512 1024)  # Example batch sizes
-DATASETS=("/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini/400x400")  # Example dataset paths
+DATASETS=("GPU-JPEG-Decoder/benchmarking_dataset_mini/400x400")  # Example dataset paths
 
 # Create build directory if it doesn't exist
 mkdir -p build

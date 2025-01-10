@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <cuda_runtime.h>
 #include <nvtx3/nvToolsExt.h>
-#include "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/cudaUF-implementation/src/parser.h"
+#include "GPU-JPEG-Decoder/cudaUF-implementation/src/parser.h"
 
 namespace fs = std::filesystem;
 
@@ -183,7 +183,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
 int main(int argc, char** argv) {
     // Default values
     size_t batchSize = 512;
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_mini";
+    std::string datasetPath = "GPU-JPEG-Decoder/benchmarking_dataset_mini";
 
     // Process command-line arguments
     for (int i = 1; i < argc; i++) {

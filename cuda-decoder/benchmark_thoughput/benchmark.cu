@@ -115,8 +115,7 @@ void JPEGDecoderBenchmark(benchmark::State& state, std::vector<std::string> imag
 }
 
 int main(int argc, char** argv) {
-    std::string datasetPath = "/home/dphpc2024_jpeg_1/cfernand/GPU-JPEG-Decoder/cudaO-implementation/benchmark_thoughput/benchmarking_dataset_through";
-    //std::string datasetPath = "/home/dphpc2024_jpeg_1/GPU-JPEG-Decoder/benchmarking_dataset_through";
+    std::string datasetPath = "GPU-JPEG-Decoder/datasets/benchmarking_dataset_through";
 
     std::vector<std::string> imagePaths = getAllImages(datasetPath);
 
