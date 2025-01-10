@@ -4,9 +4,7 @@ Fully Parallelized GPU-only High Performance JPEG Decoder
 ## Introduction
 
 Our CUDA decoder is a high-performance tool for decoding JPEG images on GPUs. This project leverages CUDA to implement efficient parallelization strategies, achieving significant speedups compared to traditional CPU (jpeglib and zune-jpeg) and GPU (nvJPEG) based decoders. The repository also includes benchmarking tools, profiling scripts, and support for testing on various datasets.
-
-![Runtime](figures/runtime.pdf)
-![Throughput](figures/throughput.pdf)
+![Flowchart](figures/decoding.png)
 
 ## Table of Contents
 
@@ -19,6 +17,9 @@ Our CUDA decoder is a high-performance tool for decoding JPEG images on GPUs. Th
     Profiling and GPU Analysis
     Challenges and Learnings
     Contributors
+
+![Runtime](figures/runtime.png)
+![Throughput](figures/throughput.png)
 
 ## Repository Structure
 ```
