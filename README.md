@@ -1,5 +1,5 @@
 # GPU-JPEG-Decoder
-Fully Parallelized GPU-only High Performance JPEG Decoder
+Fully Parallelized GPU-only High Performance JPEG Decoder. (See final project report [here](project_report.pdf))
 
 ## Introduction
 
